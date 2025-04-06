@@ -1,4 +1,4 @@
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, Debug, Eq, PartialEq)]
 pub enum RingError {
     /// Error when trying to find a modular inverse that doesn't exist (gcd(a, k) != 1).
     #[error("NoInverse: {0}")]

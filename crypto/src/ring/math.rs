@@ -11,9 +11,9 @@ pub struct Ring {
 impl Ring {
     /// Create a new Ring with the given modulus, which must be prime.
     pub fn try_with(modulus: u64) -> Result<Self, RingError> {
-        if !primal::is_prime(modulus) {
+        if modulus <= 1 {
             return Err(RingError::InvalidModulus(format!(
-                "Modulus {} is not prime",
+                "Modulus must be greater than 1, got {}",
                 modulus
             )));
         }
@@ -26,21 +26,37 @@ impl Ring {
     }
 
     pub fn normalize(&self, value: i64) -> i64 {
-        let modulus_i128 = self.modulus as i128;
+        let m = self.modulus as i64;
 
-        (((value as i128 % modulus_i128) + modulus_i128) % modulus_i128) as i64
+        let rem = value % m;
+        if rem < 0 {
+            return rem + m;
+        }
+
+        rem
     }
 
     pub fn add(&self, a: i64, b: i64) -> i64 {
-        self.normalize(((a as i128 + b as i128) % self.modulus as i128) as _)
+        let a_norm = self.normalize(a);
+        let b_norm = self.normalize(b);
+
+        self.normalize(a_norm.wrapping_add(b_norm))
     }
 
     pub fn sub(&self, a: i64, b: i64) -> i64 {
-        self.normalize(((a as i128 - b as i128) % self.modulus as i128) as _)
+        let a_norm = self.normalize(a);
+        let b_norm = self.normalize(b);
+
+        self.normalize(a_norm.wrapping_sub(b_norm))
     }
 
     pub fn mul(&self, a: i64, b: i64) -> i64 {
-        self.normalize(((a as i128 * b as i128) % self.modulus as i128) as _)
+        let a_norm = self.normalize(a);
+        let b_norm = self.normalize(b);
+
+        let result = (a_norm as i128 * b_norm as i128) % (self.modulus as i128);
+
+        self.normalize(result as i64)
     }
 
     pub fn neg(&self, a: i64) -> i64 {
@@ -54,14 +70,17 @@ impl Ring {
     pub fn inv(&self, a: i64) -> Result<i64, RingError> {
         let a_norm = self.normalize(a);
         if a_norm == 0 {
-            return Ok(0);
+            return Err(RingError::NoInverse(format!(
+                "Cannot invert 0 in mod {}",
+                self.modulus
+            )));
         }
 
         let (g, x, _) = extended_gcd(a_norm, self.modulus as i64);
         if g != 1 {
             return Err(RingError::NoInverse(format!(
-                "Modular inverse does not exist for {} mod {}",
-                a, self.modulus
+                "Modular inverse does not exist for {} mod {} (gcd={})",
+                a_norm, self.modulus, g
             )));
         }
 
@@ -76,7 +95,8 @@ mod tests {
     #[test]
     fn test_ring_creation() {
         assert!(Ring::try_with(11).is_ok());
-        assert!(Ring::try_with(4).is_err());
+        assert!(Ring::try_with(25).is_ok());
+        assert!(Ring::try_with(1).is_err());
     }
 
     #[test]

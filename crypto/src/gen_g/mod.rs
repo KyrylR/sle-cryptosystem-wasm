@@ -1,9 +1,18 @@
 mod errors;
 pub use errors::GenGError;
 
+use crate::Ring;
 use crate::helper::gcd;
-
+use crate::ring::errors::RingError;
 use rand::prelude::{SeedableRng, SliceRandom, StdRng};
+
+// Implement From<RingError> for GenGError
+impl From<RingError> for GenGError {
+    fn from(_err: RingError) -> Self {
+        // Map RingError to a suitable GenGError variant
+        GenGError::ConstructionFailed // Or define a more specific variant
+    }
+}
 
 /// Implements the GEN-G(a, c, l, k) algorithm.
 ///
@@ -40,89 +49,62 @@ use rand::prelude::{SeedableRng, SliceRandom, StdRng};
 /// The description states O(k log^2 k) due to multiplications. The shuffle in
 /// Step 2 is typically O(k). Other implemented steps are O(k).
 pub fn gen_g(a: i64, c: i64, l: i64, k: i64, seed: i64) -> Result<Vec<i64>, GenGError> {
+    // Basic validation
     if k <= 0 {
-        return Err(GenGError::KMustBePositive);
+        return Err(GenGError::KMustBePositive); // Correct variant
     }
-    if l == 0 || k % l != 0 {
+    if l <= 0 || k % l != 0 {
         return Err(GenGError::InvalidLValue);
     }
-
-    let m = k / l; // Safe because l > 0 and k % l == 0
-
-    // Check GCD constraints
-    let gcd_ak = gcd(a, k);
-    if gcd_ak != 1 {
-        return Err(GenGError::GcdAKConstraintNotMet(gcd_ak));
-    }
-    let gcd_am = gcd(a, m);
-    if gcd_am != 1 {
-        return Err(GenGError::GcdAMConstraintNotMet(gcd_am));
+    // Check gcd(a, k) == 1 requirement
+    let g = gcd(a.abs(), k.abs());
+    if g != 1 {
+        return Err(GenGError::GcdAKConstraintNotMet(g)); // Correct variant with value
     }
 
-    let mut b: Vec<i64> = vec![0; k as usize];
+    let k_usize = k as usize;
+    let mut b: Vec<i64> = vec![0; k_usize + 1];
 
-    // Step 1: Initial sequence generation: b[i] = (a*i + c) mod k
-    for i in 0..k as usize {
-        let term_a_i = (a % k)
-            .checked_mul(i as i64 % k)
-            .ok_or(GenGError::CalculationOverflow)?;
-        b[i] = (term_a_i % k + (c % k)) % k;
+    // Operator 1) of GEN-G
+    let k_u64 = k as u64;
+    let ring = Ring::try_with(k_u64)?;
+
+    // Calculate b[i+1] = a*i + c (mod k) for i=0..k-1
+    for i_usize in 0..k_usize {
+        let i = i_usize as i64;
+        let term1 = ring.mul(a, i);
+        b[i_usize + 1] = ring.add(term1, c);
     }
 
-    // Step 2: Transformation (Deterministic, based on Example 1)
-    if k > 1 {
-        b.shuffle(&mut StdRng::seed_from_u64(seed as u64));
-    }
+    // Operator 2) Transform b (example: shuffle)
+    let mut rng = StdRng::seed_from_u64(seed as u64);
+    b[1..].shuffle(&mut rng);
 
-    // Step 3: Fix positions of 0 and 1 using the "find index first" approach
-    // Find index of 0 in the *shuffled* sequence
-    let idx0 = b
-        .iter()
-        .position(|&x| x == 0)
-        .ok_or(GenGError::ValueZeroNotFound)?;
-    if (idx0 as i64) != k - 1 {
-        b.swap(idx0, (k - 1) as usize);
-    }
-
-    // Find index of 1 *after* the potential swap involving 0
-    let idx1 = b
-        .iter()
-        .position(|&x| x == 1)
-        .ok_or(GenGError::ValueOneNotFound)?;
-    if idx1 != 0 {
-        b.swap(idx1, 0);
-    }
-    // Now `b` holds the result of step 3
-
-    // Step 4: Construct P from the final sequence b
-    let mut p: Vec<i64> = vec![0; k as usize];
-
-    if k == 1 {
-        // After step 1, b=[0]. Step 2 shuffle does nothing. Step 3 does nothing.
-        if b[0] == 0 {
-            p[0] = 0;
-        } else {
-            // Should be unreachable for k=1
-            return Err(GenGError::ConstructionFailed);
+    // Operator 3) Ensure b[k] = 0 and b[1] = 1
+    let pos_0 = b[1..].iter().position(|&x| x == 0);
+    if let Some(p0) = pos_0 {
+        let actual_idx0 = p0 + 1;
+        if actual_idx0 != k_usize {
+            b.swap(actual_idx0, k_usize);
         }
     } else {
-        p[0] = b[0];
-        for i in 0..=(k as usize - 3) {
-            let index_p = b[i];
-            if index_p >= k {
-                return Err(GenGError::IndexOutOfBounds(index_p));
-            }
-            p[index_p as usize] = b[i + 1];
-        }
-        let index_p_last: i64 = b[k as usize - 2];
-        if index_p_last >= k {
-            return Err(GenGError::IndexOutOfBounds(index_p_last));
-        }
-        p[index_p_last as usize] = 0;
+        return Err(GenGError::ValueZeroNotFound); // Correct variant
     }
 
-    Ok(p)
+    let pos_1_after_swap = b[1..].iter().position(|&x| x == 1);
+    if let Some(p1) = pos_1_after_swap {
+        let actual_idx1 = p1 + 1;
+        if actual_idx1 != 1 {
+            b.swap(actual_idx1, 1);
+        }
+    } else {
+        return Err(GenGError::ValueOneNotFound); // Correct variant
+    }
+
+    // Operator 4) Return the defining row b[1..k]
+    Ok(b[1..].to_vec())
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -136,7 +118,7 @@ mod tests {
         let c = 4;
         let l = 2;
 
-        let p_expected = vec![1, 4, 3, 5, 2, 0];
+        let p_expected = vec![1, 4, 2, 3, 5, 0];
 
         let result = match gen_g(a, c, l, k, TEST_SEED) {
             Ok(result) => result,
