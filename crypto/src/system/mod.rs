@@ -1,153 +1,19 @@
 pub mod errors;
 pub mod matrix_ops;
-pub mod params;
 
-use crate::ring::Ring;
-use crate::sle::{Solution, solve as solve_sle}; // Alias solve
+use crate::keypair::{PrivateKey, PublicKey};
+use crate::sle::{Solution, solve as solve_sle};
+
 use errors::CryptoError;
-use matrix_ops::{
-    Matrix, Vector, matrix_inverse, matrix_rank, matrix_vector_mul, vector_add, vector_sub,
-};
-use params::{AliceSecret, BobPublic, SharedParams};
+
+use matrix_ops::{Vector, matrix_vector_mul, vector_add, vector_sub};
+
 use rand::{Rng, SeedableRng, rngs::StdRng};
 
-/// Sets up the shared, public, and secret parameters for the cryptosystem.
+/// Encrypts a message block `v` using the public key.
 ///
 /// # Arguments
-/// * `m`: Modulus for the ring Z_m.
-/// * `p`: Number of equations (message block size).
-/// * `q`: Number of variables (must be >= p for typical use).
-/// * `seed`: A seed for deterministic random generation of matrices/vectors.
-///
-/// # Returns
-/// A tuple `(SharedParams, AliceSecret, BobPublic)` or a `CryptoError`.
-pub fn setup_shared(
-    m: u64,
-    p: usize,
-    q: usize,
-    seed: u64,
-) -> Result<(SharedParams, AliceSecret, BobPublic), CryptoError> {
-    if m <= 1 {
-        return Err(CryptoError::InvalidParameters(
-            "Modulus m must be > 1".to_string(),
-        ));
-    }
-    if p == 0 {
-        return Err(CryptoError::InvalidParameters(
-            "Number of equations p must be > 0".to_string(),
-        ));
-    }
-    if q < p {
-        // While possible, the paper implies p < q for solvability guarantee method
-        // Let's allow q=p for now, but q<p is problematic.
-        return Err(CryptoError::InvalidParameters(
-            "Number of variables q must be >= p".to_string(),
-        ));
-    }
-
-    let ring = Ring::try_with(m)?;
-    let mut rng = StdRng::seed_from_u64(seed);
-
-    // --- Generate Alice's components ---
-
-    // Generate matrix a (p x q) with rank p
-    let a_matrix: Matrix;
-    let mut attempts_a = 0;
-    loop {
-        if attempts_a > 100 {
-            // Avoid infinite loop
-            return Err(CryptoError::SetupFailed(
-                "Failed to generate matrix A with rank p after multiple attempts".to_string(),
-            ));
-        }
-        let mut temp_a = vec![vec![0; q]; p];
-        for row in temp_a.iter_mut() {
-            for val in row.iter_mut() {
-                *val = (rng.random::<u64>() % m) as i64;
-            }
-        }
-        // Check rank
-        match matrix_rank(&temp_a, &ring) {
-            Ok(rank) => {
-                if rank == p {
-                    a_matrix = temp_a;
-                    break; // Found matrix A with rank p
-                } else {
-                    attempts_a += 1;
-                    continue; // Try generating a new A
-                }
-            }
-            Err(e) => {
-                // Error during rank calculation, potentially due to ring issues
-                return Err(CryptoError::SetupFailed(format!(
-                    "Error during rank calculation for matrix A: {}",
-                    e
-                )));
-            }
-        }
-    }
-
-    // Generate invertible matrix b (p x p) and its inverse b_inv
-    let b_matrix: Matrix;
-    let b_inv_matrix: Matrix;
-    let mut attempts = 0;
-    loop {
-        if attempts > 100 {
-            // Avoid infinite loop
-            return Err(CryptoError::SetupFailed(
-                "Failed to generate invertible matrix B after multiple attempts".to_string(),
-            ));
-        }
-        let mut temp_b = vec![vec![0; p]; p];
-        for row in temp_b.iter_mut() {
-            for val in row.iter_mut() {
-                *val = (rng.random::<u64>() % m) as i64;
-            }
-        }
-        // Try to invert B
-        match matrix_inverse(&temp_b, &ring) {
-            Ok(inv) => {
-                b_matrix = temp_b;
-                b_inv_matrix = inv;
-                break; // Found invertible B
-            }
-            Err(_) => {
-                attempts += 1;
-                continue; // Try generating a new B
-            }
-        }
-    }
-
-    // Generate constant vectors a_inner, a_outer (p x 1)
-    let mut a_inner = vec![0; p];
-    let mut a_outer = vec![0; p];
-    for i in 0..p {
-        a_inner[i] = (rng.random::<u64>() % m) as i64;
-        a_outer[i] = (rng.random::<u64>() % m) as i64;
-    }
-
-    // --- Assemble structs ---
-    let shared_params = SharedParams { m, ring, p, q };
-    let alice_secret = AliceSecret {
-        b_inv: b_inv_matrix,
-        a_inner: a_inner.clone(),
-        a_outer: a_outer.clone(),
-    };
-    let bob_public = BobPublic {
-        a: a_matrix,
-        b: b_matrix,
-        a_inner,
-        a_outer,
-    };
-
-    Ok((shared_params, alice_secret, bob_public))
-}
-
-/// Encrypts a message block `v` using Bob's public parameters.
-///
-/// # Arguments
-/// * `shared`: Shared parameters.
-/// * `public`: Bob's public parameters received from Alice.
+/// * `public_key`: The public key.
 /// * `v`: The message block (vector of length `p`).
 /// * `seed`: Seed to generate the random vector `a_bar`. Using a seed makes
 ///           encryption deterministic for testing/debugging, use a real RNG in practice.
@@ -155,11 +21,13 @@ pub fn setup_shared(
 /// # Returns
 /// The ciphertext block `(d, d1)` or a `CryptoError`.
 pub fn encrypt(
-    shared: &SharedParams,
-    public: &BobPublic,
+    public_key: &PublicKey,
     v: &Vector,
     seed: u64,
 ) -> Result<(Vector, Vector), CryptoError> {
+    let shared = &public_key.shared;
+    let public = &public_key.encryption_params;
+
     if v.len() != shared.p {
         return Err(CryptoError::DimensionMismatch(format!(
             "Message block length ({}) must match parameter p ({})",
@@ -199,6 +67,8 @@ pub fn encrypt(
     let d = matrix_vector_mul(&public.a, &a_bar, &shared.ring)?;
 
     // 3. Calculate d1 = B * (A * (x_bar + a_bar) + a_inner) + a_outer (mod m)
+    // Note: Paper uses l(x) = Ax, L(x) = B * (l(x) + a_inner) + a_outer (slightly simplified here)
+    // The implementation follows: L(x + a_bar) = B * (A * (x_bar + a_bar) + a_inner) + a_outer
     let x_plus_a = vector_add(&x_bar, &a_bar, &shared.ring)?;
     let a_x_plus_a = matrix_vector_mul(&public.a, &x_plus_a, &shared.ring)?;
     let inner_sum = vector_add(&a_x_plus_a, &public.a_inner, &shared.ring)?;
@@ -208,21 +78,18 @@ pub fn encrypt(
     Ok((d, d1))
 }
 
-/// Decrypts a ciphertext block `(d, d1)` using Alice's secret parameters.
+/// Decrypts a ciphertext block `(d, d1)` using the private key.
 ///
 /// # Arguments
-/// * `shared`: Shared parameters.
-/// * `secret`: Alice's secret parameters.
+/// * `private_key`: The private key.
 /// * `ciphertext`: The ciphertext block `(d, d1)`.
 ///
 /// # Returns
 /// The original message block `v` or a `CryptoError`.
-pub fn decrypt(
-    shared: &SharedParams,
-    secret: &AliceSecret,
-    d: &Vector,
-    d1: &Vector,
-) -> Result<Vector, CryptoError> {
+pub fn decrypt(private_key: &PrivateKey, d: &Vector, d1: &Vector) -> Result<Vector, CryptoError> {
+    let shared = &private_key.public_key.shared;
+    let secret = &private_key.decryption_secrets;
+
     // Check dimensions
     if d.len() != shared.p || d1.len() != shared.p {
         return Err(CryptoError::DimensionMismatch(format!(
@@ -243,15 +110,23 @@ pub fn decrypt(
         ));
     }
 
+    // Decryption steps based on the proof in the paper:
+    // d1 = B * (A * (x_bar + a_bar) + a_inner) + a_outer
+    // B_inv * (d1 - a_outer) = A * (x_bar + a_bar) + a_inner
+    // B_inv * (d1 - a_outer) - a_inner = A * (x_bar + a_bar)
+    // We know d = A * a_bar
+    // The value we want is v = A * x_bar
+    // So, A * (x_bar + a_bar) - d = A * x_bar = v
+
     // 1. Calculate intermediate = B_inv * (d1 - a_outer)
     let d1_minus_outer = vector_sub(d1, &secret.a_outer, &shared.ring)?;
     let b_inv_mult = matrix_vector_mul(&secret.b_inv, &d1_minus_outer, &shared.ring)?;
 
-    // 2. Subtract a_inner: result is v + d
-    let v_plus_d = vector_sub(&b_inv_mult, &secret.a_inner, &shared.ring)?;
+    // 2. Subtract a_inner: result is A * (x_bar + a_bar)
+    let a_x_plus_a_bar = vector_sub(&b_inv_mult, &secret.a_inner, &shared.ring)?;
 
-    // 3. Subtract d to get v
-    let v = vector_sub(&v_plus_d, d, &shared.ring)?;
+    // 3. Subtract d: result is A * x_bar = v
+    let v = vector_sub(&a_x_plus_a_bar, d, &shared.ring)?;
 
     Ok(v)
 }

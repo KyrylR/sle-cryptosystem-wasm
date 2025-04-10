@@ -3,16 +3,7 @@ pub use errors::GenGError;
 
 use crate::Ring;
 use crate::helper::gcd;
-use crate::ring::errors::RingError;
 use rand::prelude::{SeedableRng, SliceRandom, StdRng};
-
-// Implement From<RingError> for GenGError
-impl From<RingError> for GenGError {
-    fn from(_err: RingError) -> Self {
-        // Map RingError to a suitable GenGError variant
-        GenGError::ConstructionFailed // Or define a more specific variant
-    }
-}
 
 /// Implements the GEN-G(a, c, l, k) algorithm.
 ///
@@ -76,7 +67,7 @@ pub fn gen_g(a: i64, c: i64, l: i64, k: i64, seed: i64) -> Result<Vec<i64>, GenG
         b[i_usize + 1] = ring.add(term1, c);
     }
 
-    // Operator 2) Transform b (example: shuffle)
+    // Operator 2) Transform b via shuffling
     let mut rng = StdRng::seed_from_u64(seed as u64);
     b[1..].shuffle(&mut rng);
 

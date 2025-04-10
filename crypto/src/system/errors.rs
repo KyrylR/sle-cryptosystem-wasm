@@ -11,7 +11,7 @@ pub enum CryptoError {
     Sle(#[from] SleError),
 
     #[error("GenG algorithm error: {0}")]
-    GenG(#[from] GenGError), // If needed later
+    GenG(#[from] GenGError),
 
     #[error("Setup failed: {0}")]
     SetupFailed(String),

@@ -18,4 +18,6 @@ pub enum GenGError {
     IndexOutOfBounds(i64),
     #[error("Internal error: Construction of P failed unexpectedly")]
     ConstructionFailed,
+    #[error("Ring error: {0}")]
+    Ring(#[from] crate::ring::RingError),
 }

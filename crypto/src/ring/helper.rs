@@ -1,5 +1,22 @@
 /// Computes the greatest common divisor of two numbers.
+/// Uses the Euclidean algorithm.
+///
+/// # Examples
+///
+/// ```
+/// # use crypto::ring::helper::gcd;
+/// assert_eq!(gcd(54, 24), 6);
+/// assert_eq!(gcd(10, 0), 10);
+/// assert_eq!(gcd(0, 5), 5);
+/// assert_eq!(gcd(0, 0), 0);
+/// assert_eq!(gcd(7, 13), 1);
+/// assert_eq!(gcd(-54, 24), 6); // Should handle negative inputs correctly
+/// ```
 pub fn gcd(mut a: i64, mut b: i64) -> i64 {
+    // Ensure non-negative inputs for standard Euclidean algorithm
+    a = a.abs();
+    b = b.abs();
+
     while b != 0 {
         let temp = b;
         b = a % b;
@@ -9,6 +26,33 @@ pub fn gcd(mut a: i64, mut b: i64) -> i64 {
 }
 
 /// Finds (g, x, y) such that ax + by = g = gcd(a, b).
+/// Uses the Extended Euclidean Algorithm.
+/// Handles negative inputs.
+///
+/// # Examples
+///
+/// ```
+/// # use crypto::ring::helper::extended_gcd;
+/// let (g, x, y) = extended_gcd(54, 24);
+/// assert_eq!(g, 6);
+/// assert_eq!(54 * x + 24 * y, g); // Verify Bezout's identity
+///
+/// let (g, x, y) = extended_gcd(10, 0);
+/// assert_eq!(g, 10);
+/// assert_eq!(10 * x + 0 * y, g);
+///
+/// let (g, x, y) = extended_gcd(0, 13);
+/// assert_eq!(g, 13);
+/// assert_eq!(0 * x + 13 * y, g);
+///
+/// let (g, x, y) = extended_gcd(-15, 10);
+/// assert_eq!(g, 5);
+/// assert_eq!(-15 * x + 10 * y, g);
+///
+/// let (g, x, y) = extended_gcd(17, 13);
+/// assert_eq!(g, 1);
+/// assert_eq!(17 * x + 13 * y, g);
+/// ```
 pub fn extended_gcd(a: i64, b: i64) -> (i64, i64, i64) {
     if a == 0 {
         if b.is_negative() {

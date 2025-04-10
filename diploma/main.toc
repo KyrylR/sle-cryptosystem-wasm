@@ -1,0 +1,67 @@
+\babel@toc {ukrainian}{}\relax 
+\contentsline {section}{\numberline {1}Теоретичні основи та огляд літератури}{6}{section.1}%
+\contentsline {subsection}{\numberline {1.1}Основні поняття теорії скінченних кілець}{6}{subsection.1.1}%
+\contentsline {subsubsection}{\numberline {1.1.1}Кільця лишків \(Z_k\)}{6}{subsubsection.1.1.1}%
+\contentsline {subsubsection}{\numberline {1.1.2}Ізоморфізми та гомоморфізми кілець}{7}{subsubsection.1.1.2}%
+\contentsline {subsubsection}{\numberline {1.1.3}Дільники нуля та одиниці}{8}{subsubsection.1.1.3}%
+\contentsline {subsubsection}{\numberline {1.1.4}Мультиплікативна група кільця (\(Z_k^*\))}{9}{subsubsection.1.1.4}%
+\contentsline {subsection}{\numberline {1.2}Системи лінійних рівнянь над кільцями лишків}{11}{subsection.1.2}%
+\contentsline {subsubsection}{\numberline {1.2.1}Умови існування та єдиності розв\'язків}{11}{subsubsection.1.2.1}%
+\contentsline {subsubsection}{\numberline {1.2.2}Методи розв\'язання}{12}{subsubsection.1.2.2}%
+\contentsline {subsection}{\numberline {1.3}Основи симетричної криптографії}{13}{subsection.1.3}%
+\contentsline {subsubsection}{\numberline {1.3.1}Визначення та моделі безпеки}{13}{subsubsection.1.3.1}%
+\contentsline {subsubsection}{\numberline {1.3.2}Класичні шифри та їх аналіз}{14}{subsubsection.1.3.2}%
+\contentsline {subsubsection}{\numberline {1.3.3}Сучасні симетричні алгоритми (огляд)}{15}{subsubsection.1.3.3}%
+\contentsline {subsubsection}{\numberline {1.3.4}Принцип Керкгоффса}{15}{subsubsection.1.3.4}%
+\contentsline {subsection}{\numberline {1.4}Огляд існуючих підходів до криптографії на основі кілець}{16}{subsection.1.4}%
+\contentsline {subsection}{\numberline {1.5}Вступ до криптографічних доведень}{17}{subsection.1.5}%
+\contentsline {subsubsection}{\numberline {1.5.1}Доведення з нульовим розголошенням (Zero-Knowledge Proofs - ZKP)}{17}{subsubsection.1.5.1}%
+\contentsline {subsubsection}{\numberline {1.5.2}Інтерактивні докази (Interactive Proofs - IP)}{18}{subsubsection.1.5.2}%
+\contentsline {subsubsection}{\numberline {1.5.3}Ймовірнісно перевірювані докази (Probabilistically Checkable Proofs - PCP)}{19}{subsubsection.1.5.3}%
+\contentsline {subsubsection}{\numberline {1.5.4}Верифіковане шифрування (Verifiable Encryption)}{20}{subsubsection.1.5.4}%
+\contentsline {section}{\numberline {2}Запропонована симетрична криптосистема на основі кілець}{22}{section.2}%
+\contentsline {subsection}{\numberline {2.1}Формальне визначення криптосистеми}{22}{subsection.2.1}%
+\contentsline {subsection}{\numberline {2.2}Побудова базових алгебраїчних структур}{22}{subsection.2.2}%
+\contentsline {subsubsection}{\numberline {2.2.1}Генерація ізоморфних кілець \(G_k\)}{22}{subsubsection.2.2.1}%
+\contentsline {subsubsection}{\numberline {2.2.2}Алгоритм GEN-G: детальний опис та аналіз}{22}{subsubsection.2.2.2}%
+\contentsline {subsubsection}{\numberline {2.2.3}Побудова ізоморфізму \(\varphi : G_k \to Z_m\)}{22}{subsubsection.2.2.3}%
+\contentsline {subsection}{\numberline {2.3}Використання сюр'єктивних відображень та систем рівнянь}{22}{subsection.2.3}%
+\contentsline {subsubsection}{\numberline {2.3.1}Визначення та властивості відображень \(\psi \) та \(\lambda \)}{22}{subsubsection.2.3.1}%
+\contentsline {subsubsection}{\numberline {2.3.2}Побудова бієкцій \(\psi _1\) та \(\lambda _1\)}{22}{subsubsection.2.3.2}%
+\contentsline {subsubsection}{\numberline {2.3.3}Роль систем лінійних рівнянь}{22}{subsubsection.2.3.3}%
+\contentsline {subsection}{\numberline {2.4}Протокол обміну повідомленнями}{22}{subsection.2.4}%
+\contentsline {subsubsection}{\numberline {2.4.1}Етап генерації ключів та параметрів}{22}{subsubsection.2.4.1}%
+\contentsline {subsubsection}{\numberline {2.4.2}Формування публічних та секретних даних (Аліса)}{22}{subsubsection.2.4.2}%
+\contentsline {subsubsection}{\numberline {2.4.3}Процес шифрування (Боб)}{22}{subsubsection.2.4.3}%
+\contentsline {subsubsection}{\numberline {2.4.4}Процес розшифрування (Аліса)}{22}{subsubsection.2.4.4}%
+\contentsline {subsection}{\numberline {2.5}Ілюстративний приклад роботи системи}{22}{subsection.2.5}%
+\contentsline {section}{\numberline {3}Аналіз безпеки та ефективності базової криптосистеми}{23}{section.3}%
+\contentsline {subsection}{\numberline {3.1}Аналіз стійкості до основних криптоатак}{23}{subsection.3.1}%
+\contentsline {subsubsection}{\numberline {3.1.1}Атака повного перебору (ключового простору)}{23}{subsubsection.3.1.1}%
+\contentsline {subsubsection}{\numberline {3.1.2}Атака на основі відомого відкритого тексту (KPA)}{23}{subsubsection.3.1.2}%
+\contentsline {subsubsection}{\numberline {3.1.3}Атака на основі обраного відкритого тексту (CPA)}{23}{subsubsection.3.1.3}%
+\contentsline {subsubsection}{\numberline {3.1.4}Атака на основі обраного шифротексту (CCA)}{23}{subsubsection.3.1.4}%
+\contentsline {subsubsection}{\numberline {3.1.5}Алгебраїчні атаки}{23}{subsubsection.3.1.5}%
+\contentsline {subsubsection}{\numberline {3.1.6}Роль секретності відображень \(\varphi , \psi , \lambda \)}{23}{subsubsection.3.1.6}%
+\contentsline {subsection}{\numberline {3.2}Оцінка обчислювальної ефективності}{23}{subsection.3.2}%
+\contentsline {subsubsection}{\numberline {3.2.1}Складність генерації ключів та параметрів}{23}{subsubsection.3.2.1}%
+\contentsline {subsubsection}{\numberline {3.2.2}Складність шифрування та розшифрування}{23}{subsubsection.3.2.2}%
+\contentsline {subsubsection}{\numberline {3.2.3}Розмір ключів та шифротексту (коефіцієнт розширення)}{23}{subsubsection.3.2.3}%
+\contentsline {subsection}{\numberline {3.3}Порівняльний аналіз}{23}{subsection.3.3}%
+\contentsline {subsubsection}{\numberline {3.3.1}Порівняння з класичним OTP}{23}{subsubsection.3.3.1}%
+\contentsline {subsubsection}{\numberline {3.3.2}Порівняння з іншими симетричними шифрами}{23}{subsubsection.3.3.2}%
+\contentsline {subsubsection}{\numberline {3.3.3}Переваги та недоліки запропонованого підходу}{23}{subsubsection.3.3.3}%
+\contentsline {subsection}{\numberline {3.4}Обмеження та потенційні вразливості}{23}{subsection.3.4}%
+\contentsline {section}{\numberline {4}Розширення та Застосування: Верифіковане Шифрування}{24}{section.4}%
+\contentsline {subsection}{\numberline {4.1}Мотивація та постановка задачі верифікованого шифрування}{24}{subsection.4.1}%
+\contentsline {subsection}{\numberline {4.2}Інтеграція з Доведеннями з Нульовим Розголошенням (ZKP)}{24}{subsection.4.2}%
+\contentsline {subsubsection}{\numberline {4.2.1}Огляд ZKP систем, потенційно сумісних з арифметикою кілець}{24}{subsubsection.4.2.1}%
+\contentsline {subsubsection}{\numberline {4.2.2}Протокол ZKP для доведення коректності шифрування}{24}{subsubsection.4.2.2}%
+\contentsline {subsubsection}{\numberline {4.2.3}Протокол ZKP для доведення властивостей зашифрованих даних}{24}{subsubsection.4.2.3}%
+\contentsline {subsection}{\numberline {4.3}Використання Інтерактивних Доказів (IP) та PCP}{24}{subsection.4.3}%
+\contentsline {subsubsection}{\numberline {4.3.1}Застосування IP для верифікації обчислень над шифротекстом}{24}{subsubsection.4.3.1}%
+\contentsline {subsubsection}{\numberline {4.3.2}Потенціал PCP для неінтерактивної верифікації}{24}{subsubsection.4.3.2}%
+\contentsline {subsection}{\numberline {4.4}Побудова схеми верифікованого шифрування}{24}{subsection.4.4}%
+\contentsline {subsubsection}{\numberline {4.4.1}Комбінування симетричної схеми та ZKP/IP}{24}{subsubsection.4.4.1}%
+\contentsline {subsubsection}{\numberline {4.4.2}Аналіз безпеки та ефективності верифікованої схеми}{24}{subsubsection.4.4.2}%
+\contentsline {subsection}{\numberline {4.5}Обговорення та відкриті питання}{24}{subsection.4.5}%
