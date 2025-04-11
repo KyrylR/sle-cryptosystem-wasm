@@ -1,8 +1,11 @@
 mod errors;
+
 pub use errors::GenGError;
 
 use crate::Ring;
 use crate::helper::gcd;
+use crate::system::matrix_ops::Vector;
+
 use rand::prelude::{SeedableRng, SliceRandom, StdRng};
 
 /// Implements the GEN-G(a, c, l, k) algorithm.
@@ -22,7 +25,7 @@ use rand::prelude::{SeedableRng, SliceRandom, StdRng};
 /// * `gcd(a, m) == 1`, where `m = k / l`.
 ///
 /// # Returns
-/// * `Ok(Vec<usize>)`: The generated sequence `P` of length `k`.
+/// * `Ok((Vec<usize>, Vec<usize>))`: The generated sequence `b` and `p`.
 /// * `Err(GenGError)`: An error if constraints are not met or an internal
 ///   issue occurs.
 ///
@@ -34,12 +37,13 @@ use rand::prelude::{SeedableRng, SliceRandom, StdRng};
 ///    if the same seed is used.
 /// 3. Modifies the shuffled `b` to place `0` at the last position (`b[k-1]`)
 ///    and `1` at the first position (`b[0]`) by swapping elements.
-/// 4. Constructs the final sequence `P` based on the modified `b`.
+/// 4. Constructs the definitive vector `P` from the transformed `b` sequence.
+///    The mapping is defined as `P[b[i]] = b[i+1]` for `i` in `[0, k-1)`.
 ///
 /// # Time Complexity
 /// The description states O(k log^2 k) due to multiplications. The shuffle in
 /// Step 2 is typically O(k). Other implemented steps are O(k).
-pub fn gen_g(a: i64, c: i64, l: i64, k: i64, seed: i64) -> Result<Vec<i64>, GenGError> {
+pub fn gen_g(a: i64, c: i64, l: i64, k: i64, seed: i64) -> Result<(Vector, Vector), GenGError> {
     // Basic validation
     if k <= 0 {
         return Err(GenGError::KMustBePositive); // Correct variant
@@ -54,7 +58,7 @@ pub fn gen_g(a: i64, c: i64, l: i64, k: i64, seed: i64) -> Result<Vec<i64>, GenG
     }
 
     let k_usize = k as usize;
-    let mut b: Vec<i64> = vec![0; k_usize + 1];
+    let mut b: Vector = vec![0; k_usize];
 
     // Operator 1) of GEN-G
     let k_u64 = k as u64;
@@ -62,38 +66,35 @@ pub fn gen_g(a: i64, c: i64, l: i64, k: i64, seed: i64) -> Result<Vec<i64>, GenG
 
     // Calculate b[i+1] = a*i + c (mod k) for i=0..k-1
     for i_usize in 0..k_usize {
-        let i = i_usize as i64;
-        let term1 = ring.mul(a, i);
-        b[i_usize + 1] = ring.add(term1, c);
+        b[i_usize] = ring.add(ring.mul(a, i_usize as _), c);
     }
 
     // Operator 2) Transform b via shuffling
-    let mut rng = StdRng::seed_from_u64(seed as u64);
-    b[1..].shuffle(&mut rng);
+    b.shuffle(&mut StdRng::seed_from_u64(seed as u64));
 
+    construct_b_and_p(b, k_usize)
+}
+
+fn construct_b_and_p(mut b: Vector, k_usize: usize) -> Result<(Vector, Vector), GenGError> {
     // Operator 3) Ensure b[k] = 0 and b[1] = 1
-    let pos_0 = b[1..].iter().position(|&x| x == 0);
-    if let Some(p0) = pos_0 {
-        let actual_idx0 = p0 + 1;
-        if actual_idx0 != k_usize {
-            b.swap(actual_idx0, k_usize);
-        }
-    } else {
-        return Err(GenGError::ValueZeroNotFound); // Correct variant
+    let Some(p0_pos) = b.iter().position(|&x| x == 0) else {
+        return Err(GenGError::ValueZeroNotFound);
+    };
+    b.swap(p0_pos, k_usize - 1);
+
+    let Some(p1_pos) = b.iter().position(|&x| x == 1) else {
+        return Err(GenGError::ValueOneNotFound);
+    };
+    b.swap(p1_pos, 0);
+
+    // Operator 4) <see doc>
+    let mut p: Vector = vec![0; k_usize];
+    p[0] = b[0];
+    for i in 0..k_usize - 1 {
+        p[b[i] as usize] = b[i + 1]
     }
 
-    let pos_1_after_swap = b[1..].iter().position(|&x| x == 1);
-    if let Some(p1) = pos_1_after_swap {
-        let actual_idx1 = p1 + 1;
-        if actual_idx1 != 1 {
-            b.swap(actual_idx1, 1);
-        }
-    } else {
-        return Err(GenGError::ValueOneNotFound); // Correct variant
-    }
-
-    // Operator 4) Return the defining row b[1..k]
-    Ok(b[1..].to_vec())
+    Ok((b.to_vec(), p.to_vec()))
 }
 
 #[cfg(test)]
@@ -103,20 +104,36 @@ mod tests {
     const TEST_SEED: i64 = 42;
 
     #[test]
+    fn test_construct_b_and_p() {
+        let original_vec = vec![2, 5, 4, 1, 0, 3];
+        let expected_b = vec![1, 5, 4, 2, 3, 0];
+        let expected_p = vec![1, 5, 3, 0, 2, 4];
+
+        let Ok((actual_b, actual_p)) = construct_b_and_p(original_vec.clone(), original_vec.len())
+        else {
+            assert!(false, "Expected construct_b_and_p to succeed");
+            return;
+        };
+
+        assert_eq!(actual_b, expected_b);
+        assert_eq!(actual_p, expected_p);
+    }
+
+    #[test]
     fn test_example_1_with_seed() {
         let k = 6;
         let a = 1;
         let c = 4;
         let l = 2;
 
-        let p_expected = vec![1, 4, 2, 3, 5, 0];
+        let b_expected = vec![1, 4, 2, 3, 5, 0];
 
-        let result = match gen_g(a, c, l, k, TEST_SEED) {
+        let (result, _) = match gen_g(a, c, l, k, TEST_SEED) {
             Ok(result) => result,
             Err(e) => panic!("Expected Ok, got Err: {:?}", e),
         };
 
-        assert_eq!(result, p_expected);
+        assert_eq!(result, b_expected);
     }
 
     #[test]
