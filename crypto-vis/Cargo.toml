@@ -1,0 +1,16 @@
+[package]
+name = "crypto-vis"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"] # Compile this crate to a dynamic system library suitable for WASM
+
+[dependencies]
+wasm-bindgen = "0.2"
+web-sys = { version = "0.3", features = ["console"] } # Optional: Add more features as needed
+console_error_panic_hook = "0.1"
+js-sys = "0.3" # Needed for some JS interactions
+
+# Add the main crypto library as a dependency
+crypto = { path = "../crypto" }

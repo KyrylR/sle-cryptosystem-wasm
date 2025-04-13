@@ -1,26 +1,20 @@
-use crate::ring::Ring;
-
-use crate::system::errors::CryptoError;
-
-/// Represents a mathematical vector using a `Vec<i64>`.
-pub type Vector = Vec<i64>;
-/// Represents a mathematical matrix using a `Vec<Vec<i64>>`.
-pub type Matrix = Vec<Vec<i64>>;
+use crate::errors::SLECryptoError;
+use crate::ring::{Matrix, Ring, Vector};
 
 /// Computes the matrix-vector product `y = Ax` modulo `m`, where `m` is the modulus of the ring.
 ///
 /// # Errors
 ///
-/// Returns `CryptoError::DimensionMismatch` if the matrix columns do not match the vector length
+/// Returns `SLECryptoError::DimensionMismatch` if the matrix columns do not match the vector length
 /// or if the matrix rows have inconsistent lengths.
-pub fn matrix_vector_mul(a: &Matrix, x: &Vector, ring: &Ring) -> Result<Vector, CryptoError> {
+pub fn matrix_vector_mul(a: &Matrix, x: &Vector, ring: &Ring) -> Result<Vector, SLECryptoError> {
     let n = a.len();
     if n == 0 {
         return Ok(Vec::new());
     }
     let m_vars = a[0].len();
     if x.len() != m_vars {
-        return Err(CryptoError::DimensionMismatch(format!(
+        return Err(SLECryptoError::DimensionMismatch(format!(
             "Matrix columns ({}) must match vector length ({})",
             m_vars,
             x.len()
@@ -30,7 +24,7 @@ pub fn matrix_vector_mul(a: &Matrix, x: &Vector, ring: &Ring) -> Result<Vector, 
     let mut y = vec![0; n];
     for i in 0..n {
         if a[i].len() != m_vars {
-            return Err(CryptoError::DimensionMismatch(format!(
+            return Err(SLECryptoError::DimensionMismatch(format!(
                 "Matrix row {} has length {} but expected {}",
                 i,
                 a[i].len(),
@@ -51,10 +45,10 @@ pub fn matrix_vector_mul(a: &Matrix, x: &Vector, ring: &Ring) -> Result<Vector, 
 ///
 /// # Errors
 ///
-/// Returns `CryptoError::DimensionMismatch` if the vectors have different lengths.
-pub fn vector_add(a: &Vector, b: &Vector, ring: &Ring) -> Result<Vector, CryptoError> {
+/// Returns `SLECryptoError::DimensionMismatch` if the vectors have different lengths.
+pub fn vector_add(a: &Vector, b: &Vector, ring: &Ring) -> Result<Vector, SLECryptoError> {
     if a.len() != b.len() {
-        return Err(CryptoError::DimensionMismatch(format!(
+        return Err(SLECryptoError::DimensionMismatch(format!(
             "Vector lengths must match for addition ({} vs {})",
             a.len(),
             b.len()
@@ -72,10 +66,10 @@ pub fn vector_add(a: &Vector, b: &Vector, ring: &Ring) -> Result<Vector, CryptoE
 ///
 /// # Errors
 ///
-/// Returns `CryptoError::DimensionMismatch` if the vectors have different lengths.
-pub fn vector_sub(a: &Vector, b: &Vector, ring: &Ring) -> Result<Vector, CryptoError> {
+/// Returns `SLECryptoError::DimensionMismatch` if the vectors have different lengths.
+pub fn vector_sub(a: &Vector, b: &Vector, ring: &Ring) -> Result<Vector, SLECryptoError> {
     if a.len() != b.len() {
-        return Err(CryptoError::DimensionMismatch(format!(
+        return Err(SLECryptoError::DimensionMismatch(format!(
             "Vector lengths must match for subtraction ({} vs {})",
             a.len(),
             b.len()
@@ -93,9 +87,9 @@ pub fn vector_sub(a: &Vector, b: &Vector, ring: &Ring) -> Result<Vector, CryptoE
 ///
 /// # Errors
 ///
-/// Returns `CryptoError::DimensionMismatch` if the inner dimensions of the matrices do not match
+/// Returns `SLECryptoError::DimensionMismatch` if the inner dimensions of the matrices do not match
 /// or if rows within the matrices have inconsistent lengths.
-pub fn matrix_mul(a: &Matrix, b: &Matrix, ring: &Ring) -> Result<Matrix, CryptoError> {
+pub fn matrix_mul(a: &Matrix, b: &Matrix, ring: &Ring) -> Result<Matrix, SLECryptoError> {
     let n = a.len(); // rows in A
     if n == 0 {
         return Ok(Matrix::new());
@@ -104,7 +98,7 @@ pub fn matrix_mul(a: &Matrix, b: &Matrix, ring: &Ring) -> Result<Matrix, CryptoE
     let m_common = a[0].len(); // cols in A
 
     if b.len() != m_common {
-        return Err(CryptoError::DimensionMismatch(format!(
+        return Err(SLECryptoError::DimensionMismatch(format!(
             "Inner dimensions must match for matrix multiplication ({} vs {})",
             m_common,
             b.len()
@@ -115,7 +109,7 @@ pub fn matrix_mul(a: &Matrix, b: &Matrix, ring: &Ring) -> Result<Matrix, CryptoE
 
     for i in 0..n {
         if a[i].len() != m_common {
-            return Err(CryptoError::DimensionMismatch(format!(
+            return Err(SLECryptoError::DimensionMismatch(format!(
                 "Matrix A row {} has incorrect length (expected {})",
                 i, m_common
             )));
@@ -125,7 +119,7 @@ pub fn matrix_mul(a: &Matrix, b: &Matrix, ring: &Ring) -> Result<Matrix, CryptoE
             #[allow(clippy::needless_range_loop)]
             for k in 0..m_common {
                 if b[k].len() != p {
-                    return Err(CryptoError::DimensionMismatch(format!(
+                    return Err(SLECryptoError::DimensionMismatch(format!(
                         "Matrix B row {} has incorrect length (expected {})",
                         k, p
                     )));
@@ -156,9 +150,9 @@ pub fn identity_matrix(n: usize) -> Matrix {
 ///
 /// # Errors
 ///
-/// Returns `CryptoError::DimensionMismatch` if the matrix rows have inconsistent lengths.
-/// Returns `CryptoError::InternalError` for internal calculation issues like GCD being zero.
-pub fn matrix_rank(matrix: &Matrix, ring: &Ring) -> Result<usize, CryptoError> {
+/// Returns `SLECryptoError::DimensionMismatch` if the matrix rows have inconsistent lengths.
+/// Returns `SLECryptoError::InternalError` for internal calculation issues like GCD being zero.
+pub fn matrix_rank(matrix: &Matrix, ring: &Ring) -> Result<usize, SLECryptoError> {
     let n = matrix.len(); // Number of rows
     if n == 0 {
         return Ok(0);
@@ -172,7 +166,7 @@ pub fn matrix_rank(matrix: &Matrix, ring: &Ring) -> Result<usize, CryptoError> {
     let mut mat = matrix.clone();
     for row in mat.iter_mut() {
         if row.len() != m_vars {
-            return Err(CryptoError::DimensionMismatch(format!(
+            return Err(SLECryptoError::DimensionMismatch(format!(
                 "Matrix row has incorrect length (expected {})",
                 m_vars
             )));
@@ -235,10 +229,10 @@ pub fn matrix_rank(matrix: &Matrix, ring: &Ring) -> Result<usize, CryptoError> {
 ///
 /// # Errors
 ///
-/// Returns `CryptoError::DimensionMismatch` if the matrix is not square.
-/// Returns `CryptoError::InternalError` if the matrix is singular (non-invertible) or
+/// Returns `SLECryptoError::DimensionMismatch` if the matrix is not square.
+/// Returns `SLECryptoError::InternalError` if the matrix is singular (non-invertible) or
 /// if an element requiring inversion does not have a modular inverse.
-pub fn matrix_inverse(matrix: &Matrix, ring: &Ring) -> Result<Matrix, CryptoError> {
+pub fn matrix_inverse(matrix: &Matrix, ring: &Ring) -> Result<Matrix, SLECryptoError> {
     let n = matrix.len();
     if n == 0 {
         return Ok(Matrix::new());
@@ -246,7 +240,7 @@ pub fn matrix_inverse(matrix: &Matrix, ring: &Ring) -> Result<Matrix, CryptoErro
     // Check if square
     for row in matrix {
         if row.len() != n {
-            return Err(CryptoError::DimensionMismatch(
+            return Err(SLECryptoError::DimensionMismatch(
                 "Matrix must be square for inversion".to_string(),
             ));
         }
@@ -274,7 +268,7 @@ pub fn matrix_inverse(matrix: &Matrix, ring: &Ring) -> Result<Matrix, CryptoErro
         }
 
         if pivot_row == n {
-            return Err(CryptoError::InternalError(format!(
+            return Err(SLECryptoError::InternalError(format!(
                 "Matrix is singular (no pivot found for column {})",
                 i
             )));
@@ -284,7 +278,7 @@ pub fn matrix_inverse(matrix: &Matrix, ring: &Ring) -> Result<Matrix, CryptoErro
 
         let pivot_val = aug[i][i];
         let inv = ring.inv(pivot_val).map_err(|_| {
-            CryptoError::InternalError(format!(
+            SLECryptoError::InternalError(format!(
                 "Matrix is singular (pivot {} in row {} has no inverse mod {})",
                 pivot_val,
                 i,
@@ -323,9 +317,7 @@ pub fn matrix_inverse(matrix: &Matrix, ring: &Ring) -> Result<Matrix, CryptoErro
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ring::Ring; // Assuming Ring can be instantiated for tests
 
-    // Helper to create a ring for testing, e.g., modulo 13
     fn test_ring() -> Ring {
         Ring::try_with(13).unwrap()
     }

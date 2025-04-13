@@ -1,21 +1,24 @@
 //! Implementation of ring ops using modular arithmetic.
 
-use super::{RingError, extended_gcd};
+use crate::errors::SLECryptoError;
+
+use super::extended_gcd;
+
 use serde::{Deserialize, Serialize};
 
 /// Represents a finite ring Z_k using modular arithmetic.
 #[derive(Default, Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Ring {
-    modulus: u64,
+    pub modulus: u64,
 }
 
 impl Ring {
     /// Create a new Ring with the given modulus.
     ///
     /// The modulus must be greater than 1.
-    pub fn try_with(modulus: u64) -> Result<Self, RingError> {
+    pub fn try_with(modulus: u64) -> Result<Self, SLECryptoError> {
         if modulus <= 1 {
-            return Err(RingError::InvalidModulus(format!(
+            return Err(SLECryptoError::InvalidModulus(format!(
                 "Modulus must be greater than 1, got {}",
                 modulus
             )));
@@ -29,7 +32,7 @@ impl Ring {
     /// # Example
     ///
     /// ```
-    /// # use crypto::ring::Ring;
+    /// # use sle_crypto::ring::Ring;
     /// let ring = Ring::try_with(13).unwrap();
     /// assert_eq!(ring.modulus(), 13);
     /// ```
@@ -44,7 +47,7 @@ impl Ring {
     /// # Example
     ///
     /// ```
-    /// # use crypto::ring::Ring;
+    /// # use sle_crypto::ring::Ring;
     /// let ring = Ring::try_with(10).unwrap();
     /// assert_eq!(ring.normalize(15), 5);
     /// assert_eq!(ring.normalize(-3), 7);
@@ -67,7 +70,7 @@ impl Ring {
     /// # Example
     ///
     /// ```
-    /// # use crypto::ring::Ring;
+    /// # use sle_crypto::ring::Ring;
     /// let ring = Ring::try_with(10).unwrap();
     /// assert_eq!(ring.add(7, 5), 2);
     /// assert_eq!(ring.add(-2, 5), 3);
@@ -85,7 +88,7 @@ impl Ring {
     /// # Example
     ///
     /// ```
-    /// # use crypto::ring::Ring;
+    /// # use sle_crypto::ring::Ring;
     /// let ring = Ring::try_with(10).unwrap();
     /// assert_eq!(ring.sub(7, 5), 2);
     /// assert_eq!(ring.sub(3, 5), 8);
@@ -105,7 +108,7 @@ impl Ring {
     /// # Example
     ///
     /// ```
-    /// # use crypto::ring::Ring;
+    /// # use sle_crypto::ring::Ring;
     /// let ring = Ring::try_with(10).unwrap();
     /// assert_eq!(ring.mul(7, 5), 5); // 35 mod 10 = 5
     /// assert_eq!(ring.mul(-2, 6), 8); // -12 mod 10 = 8
@@ -125,7 +128,7 @@ impl Ring {
     /// # Example
     ///
     /// ```
-    /// # use crypto::ring::Ring;
+    /// # use sle_crypto::ring::Ring;
     /// let ring = Ring::try_with(10).unwrap();
     /// assert_eq!(ring.neg(3), 7);
     /// assert_eq!(ring.neg(0), 0);
@@ -147,13 +150,13 @@ impl Ring {
     ///
     /// # Errors
     ///
-    /// Returns `RingError::NoInverse` if the inverse does not exist (i.e., `gcd(a, modulus) != 1`).
-    /// Returns `RingError::NoInverse` if `a` is 0.
+    /// Returns `SLECryptoError::NoInverse` if the inverse does not exist (i.e., `gcd(a, modulus) != 1`).
+    /// Returns `SLECryptoError::NoInverse` if `a` is 0.
     ///
     /// # Example
     ///
     /// ```
-    /// # use crypto::ring::{Ring, RingError};
+    /// # use sle_crypto::ring::Ring;
     /// let ring = Ring::try_with(10).unwrap();
     /// assert_eq!(ring.inv(3).unwrap(), 7); // 3 * 7 = 21 = 1 mod 10
     /// assert_eq!(ring.inv(7).unwrap(), 3);
@@ -161,10 +164,10 @@ impl Ring {
     /// assert!(ring.inv(2).is_err()); // gcd(2, 10) = 2
     /// assert!(ring.inv(0).is_err());
     /// ```
-    pub fn inv(&self, a: i64) -> Result<i64, RingError> {
+    pub fn inv(&self, a: i64) -> Result<i64, SLECryptoError> {
         let a_norm = self.normalize(a);
         if a_norm == 0 {
-            return Err(RingError::NoInverse(format!(
+            return Err(SLECryptoError::NoInverse(format!(
                 "Cannot invert 0 in mod {}",
                 self.modulus
             )));
@@ -172,7 +175,7 @@ impl Ring {
 
         let (g, x, _) = extended_gcd(a_norm, self.modulus as i64);
         if g != 1 {
-            return Err(RingError::NoInverse(format!(
+            return Err(SLECryptoError::NoInverse(format!(
                 "Modular inverse does not exist for {} mod {} (gcd={})",
                 a_norm, self.modulus, g
             )));
@@ -194,7 +197,7 @@ mod tests {
     }
 
     #[test]
-    fn test_element_normalization() -> Result<(), RingError> {
+    fn test_element_normalization() -> Result<(), SLECryptoError> {
         let ring = Ring::try_with(11)?;
         assert_eq!(ring.normalize(5), 5);
         assert_eq!(ring.normalize(16), 5);
@@ -203,7 +206,7 @@ mod tests {
     }
 
     #[test]
-    fn test_addition() -> Result<(), RingError> {
+    fn test_addition() -> Result<(), SLECryptoError> {
         let ring = Ring::try_with(11)?;
         assert_eq!(ring.add(5, 8), 2);
         assert_eq!(ring.add(-3, 8), 5);
@@ -211,7 +214,7 @@ mod tests {
     }
 
     #[test]
-    fn test_subtraction() -> Result<(), RingError> {
+    fn test_subtraction() -> Result<(), SLECryptoError> {
         let ring = Ring::try_with(11)?;
         assert_eq!(ring.sub(5, 8), 8);
         assert_eq!(ring.sub(8, 5), 3);
@@ -219,7 +222,7 @@ mod tests {
     }
 
     #[test]
-    fn test_multiplication() -> Result<(), RingError> {
+    fn test_multiplication() -> Result<(), SLECryptoError> {
         let ring = Ring::try_with(11)?;
         assert_eq!(ring.mul(5, 8), 7);
         assert_eq!(ring.mul(-2, 8), 6);
@@ -227,7 +230,7 @@ mod tests {
     }
 
     #[test]
-    fn test_negation() -> Result<(), RingError> {
+    fn test_negation() -> Result<(), SLECryptoError> {
         let ring = Ring::try_with(11)?;
         assert_eq!(ring.neg(5), 6);
         assert_eq!(ring.neg(0), 0);
@@ -235,7 +238,7 @@ mod tests {
     }
 
     #[test]
-    fn test_inversion() -> Result<(), RingError> {
+    fn test_inversion() -> Result<(), SLECryptoError> {
         let ring = Ring::try_with(11)?;
         assert_eq!(ring.inv(5)?, 9);
         Ok(())

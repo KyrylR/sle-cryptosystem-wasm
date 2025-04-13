@@ -4,7 +4,7 @@
 /// # Examples
 ///
 /// ```
-/// # use crypto::ring::helper::gcd;
+/// # use sle_crypto::ring::helper::gcd;
 /// assert_eq!(gcd(54, 24), 6);
 /// assert_eq!(gcd(10, 0), 10);
 /// assert_eq!(gcd(0, 5), 5);
@@ -32,7 +32,7 @@ pub fn gcd(mut a: i64, mut b: i64) -> i64 {
 /// # Examples
 ///
 /// ```
-/// # use crypto::ring::helper::extended_gcd;
+/// # use sle_crypto::ring::helper::extended_gcd;
 /// let (g, x, y) = extended_gcd(54, 24);
 /// assert_eq!(g, 6);
 /// assert_eq!(54 * x + 24 * y, g); // Verify Bezout's identity

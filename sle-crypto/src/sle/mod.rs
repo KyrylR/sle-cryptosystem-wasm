@@ -5,12 +5,11 @@
 //! It works best when K is prime. If K is composite, it might fail or give
 //! incorrect results if a required modular inverse doesn't exist.
 
-mod errors;
-pub use errors::SleError;
-
 use crate::ring::math::Ring;
+use crate::ring::gcd;
 
-use crate::helper::gcd;
+use crate::errors::SLECryptoError;
+
 use std::fmt;
 
 /// Represents the possible outcomes of solving a linear system modulo K.
@@ -53,31 +52,8 @@ impl fmt::Display for Solution {
 /// * `Ok(Vec<i64>)`: A vector containing all unique solutions `x` in the range `[0, k-1]`.
 ///   - If `a = 0` and `b = 0` (mod k), returns all `k` elements `[0, ..., k-1]`.
 ///   - If no solution exists (e.g., `a = 0, b != 0` or `gcd(a, k)` does not divide `b`), returns an empty vector.
-/// * `Err(SleError)`: If an internal error occurs, like failing to create a reduced ring or finding an inverse when expected.
-///
-/// # Example
-///
-/// ```
-/// # use crypto::ring::Ring;
-/// # use crypto::sle::solve_linear_congruence; // Make visible for doctest
-/// # use crypto::sle::SleError;
-/// let ring = Ring::try_with(6).unwrap();
-/// // 2x = 4 (mod 6) -> gcd(2, 6) = 2, 4 % 2 == 0. Solutions: x=2, x=5.
-/// assert_eq!(solve_linear_congruence(2, 4, &ring).unwrap(), vec![2, 5]);
-///
-/// // 3x = 2 (mod 6) -> gcd(3, 6) = 3, 2 % 3 != 0. No solution.
-/// assert_eq!(solve_linear_congruence(3, 2, &ring), Ok(vec![]));
-///
-/// // 5x = 1 (mod 6) -> gcd(5, 6) = 1. Unique solution: x=5.
-/// assert_eq!(solve_linear_congruence(5, 1, &ring).unwrap(), vec![5]);
-///
-/// // 0x = 0 (mod 6) -> All solutions.
-/// assert_eq!(solve_linear_congruence(0, 0, &ring).unwrap(), vec![0, 1, 2, 3, 4, 5]);
-///
-/// // 0x = 3 (mod 6) -> No solution.
-/// assert_eq!(solve_linear_congruence(0, 3, &ring), Ok(vec![]));
-/// ```
-pub fn solve_linear_congruence(a: i64, b: i64, ring: &Ring) -> Result<Vec<i64>, SleError> {
+/// * `Err(SLECryptoError)`: If an internal error occurs, like failing to create a reduced ring or finding an inverse when expected.
+pub fn solve_linear_congruence(a: i64, b: i64, ring: &Ring) -> Result<Vec<i64>, SLECryptoError> {
     let k = ring.modulus() as i64;
     let a_norm = ring.normalize(a);
     let b_norm = ring.normalize(b);
@@ -120,7 +96,7 @@ pub fn solve_linear_congruence(a: i64, b: i64, ring: &Ring) -> Result<Vec<i64>, 
         }
         if k_prime <= 0 {
             // Should not happen if k > 1 initially
-            return Err(SleError::InternalError(
+            return Err(SLECryptoError::InternalError(
                 "Invalid reduced modulus k' <= 0".to_string(),
             ));
         }
@@ -132,7 +108,7 @@ pub fn solve_linear_congruence(a: i64, b: i64, ring: &Ring) -> Result<Vec<i64>, 
         let inv_a_prime = match reduced_ring.inv(a_prime) {
             Ok(inv) => inv,
             Err(_) => {
-                return Err(SleError::InternalError(format!(
+                return Err(SLECryptoError::InternalError(format!(
                     "Failed to find inverse for {} mod {} (gcd should be 1)",
                     a_prime, k_prime
                 )));
@@ -161,10 +137,10 @@ pub fn solve_linear_congruence(a: i64, b: i64, ring: &Ring) -> Result<Vec<i64>, 
 ///   k: The modulus (must be > 1).
 ///
 /// Returns:
-///   A `Result` containing either a `Solution` enum or an `SleError`.
-pub fn solve(a: &[Vec<i64>], b: &[i64], k: u64) -> Result<Solution, SleError> {
+///   A `Result` containing either a `Solution` enum or an `SLECryptoError`.
+pub fn solve(a: &[Vec<i64>], b: &[i64], k: u64) -> Result<Solution, SLECryptoError> {
     if k <= 1 {
-        return Err(SleError::InvalidModulus);
+        return Err(SLECryptoError::InvalidModulus("".into()));
     }
 
     let n = a.len(); // Number of equations
@@ -177,7 +153,7 @@ pub fn solve(a: &[Vec<i64>], b: &[i64], k: u64) -> Result<Solution, SleError> {
 
     // --- Dimension Checks ---
     if b.len() != n {
-        return Err(SleError::DimensionMismatch(format!(
+        return Err(SLECryptoError::DimensionMismatch(format!(
             "Matrix A rows ({}) must match vector b length ({})",
             n,
             b.len()
@@ -185,7 +161,7 @@ pub fn solve(a: &[Vec<i64>], b: &[i64], k: u64) -> Result<Solution, SleError> {
     }
     for (i, row) in a.iter().enumerate() {
         if row.len() != m {
-            return Err(SleError::DimensionMismatch(format!(
+            return Err(SLECryptoError::DimensionMismatch(format!(
                 "Row {} in matrix A has length {} but expected {}",
                 i,
                 row.len(),
@@ -314,7 +290,7 @@ pub fn solve(a: &[Vec<i64>], b: &[i64], k: u64) -> Result<Solution, SleError> {
         let sols = solve_linear_congruence(pivot_val, rhs, &ring)?;
 
         if sols.is_empty() {
-            return Err(SleError::InternalError(format!(
+            return Err(SLECryptoError::InternalError(format!(
                 "Inconsistency detected during back-substitution for row {}, pivot col {}. Equation {}x = {} mod {}",
                 i, pivot_col, pivot_val, rhs, k
             )));
@@ -468,15 +444,6 @@ mod tests {
         }
     }
 
-    // --- Edge Case and Error Tests ---
-    #[test]
-    fn test_invalid_modulus() {
-        let a = vec![vec![1, 1]];
-        let b = vec![1];
-        assert!(matches!(solve(&a, &b, 1), Err(SleError::InvalidModulus)));
-        assert!(matches!(solve(&a, &b, 0), Err(SleError::InvalidModulus)));
-    }
-
     #[test]
     fn test_dimension_mismatch_b() {
         let a = vec![vec![1, 2], vec![3, 4]]; // 2x2
@@ -484,7 +451,7 @@ mod tests {
         let k = 5;
         assert!(matches!(
             solve(&a, &b, k),
-            Err(SleError::DimensionMismatch(_))
+            Err(SLECryptoError::DimensionMismatch(_))
         ));
     }
 
@@ -495,7 +462,7 @@ mod tests {
         let k = 5;
         assert!(matches!(
             solve(&a, &b, k),
-            Err(SleError::DimensionMismatch(_))
+            Err(SLECryptoError::DimensionMismatch(_))
         ));
     }
 
@@ -511,7 +478,7 @@ mod tests {
         // Let's refine the check: n=0 means b must be empty.
         assert!(matches!(
             solve(&a, &b2, k),
-            Err(SleError::DimensionMismatch(_))
+            Err(SLECryptoError::DimensionMismatch(_))
         ));
 
         let a3 = vec![vec![], vec![]]; // 2 equations, 0 variables

@@ -1,5 +1,16 @@
-#[derive(thiserror::Error, Debug, PartialEq, Eq)]
-pub enum GenGError {
+#[derive(thiserror::Error, Debug)]
+pub enum SLECryptoError {
+    /// Error when trying to find a modular inverse that doesn't exist (gcd(a, k) != 1).
+    #[error("NoInverse: {0}")]
+    NoInverse(String),
+    /// Error when creating a ring with an invalid modulus (k <= 1).
+    #[error("InvalidModulus: {0}")]
+    InvalidModulus(String),
+    #[error("DimensionMismatch: {0}")]
+    DimensionMismatch(String),
+    #[error("InternalError: {0}")]
+    InternalError(String),
+
     #[error("Input order k must be positive")]
     KMustBePositive,
     #[error("Input parameter l must be positive and divide k")]
@@ -18,6 +29,15 @@ pub enum GenGError {
     IndexOutOfBounds(i64),
     #[error("Internal error: Construction of P failed unexpectedly")]
     ConstructionFailed,
-    #[error("Ring error: {0}")]
-    Ring(#[from] crate::ring::RingError),
+
+    #[error("Could not solve system: {0}")]
+    SolutionError(String),
+    #[error("SLE error: {0}")]
+    Infinite(String),
+
+    #[error("InvalidParameters: {0}")]
+    InvalidParameters(String),
+
+    #[error("Data serialization: {0}")]
+    SerializationError(#[from] serde_json::Error),
 }
