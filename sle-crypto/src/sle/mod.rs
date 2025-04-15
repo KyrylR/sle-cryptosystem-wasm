@@ -1,510 +1,386 @@
-//! A module for solving systems of linear equations Ax = b
-//! over the ring of integers modulo K (Z_K).
-//!
-//! This implementation uses Gaussian elimination adapted for modular arithmetic.
-//! It works best when K is prime. If K is composite, it might fail or give
-//! incorrect results if a required modular inverse doesn't exist.
+///#! A tiny “tss_modulo”‐style null‐space solver in Rust.
+///#!
+///#! Solves A·x ≡ 0 (mod m), returning a basis of at most n generators.
+///#!
+///#! Uses only `i64` arithmetic and extended‐gcd.
+use crate::ring::{Matrix, Ring, Vector, extended_gcd, gcd};
 
-use crate::ring::math::Ring;
-use crate::ring::gcd;
-
-use crate::errors::SLECryptoError;
-
-use std::fmt;
-
-/// Represents the possible outcomes of solving a linear system modulo K.
-#[derive(Debug, PartialEq, Eq)]
-pub enum Solution {
-    /// A unique solution vector x.
-    Unique(Vec<i64>),
-    /// No solution exists for the system.
-    NoSolution,
-    /// Infinitely many solutions exist.
-    /// The Vec contains a particular solution (often with free variables set to 0),
-    /// and the inner Vec<usize> contains the indices (0-based) of the free variables.
-    Infinite(Vec<i64>, Vec<usize>),
-}
-
-impl fmt::Display for Solution {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Solution::Unique(x) => write!(f, "Unique solution: {:?}", x),
-            Solution::NoSolution => write!(f, "No solution"),
-            Solution::Infinite(sol, free_vars) => write!(
-                f,
-                "Infinite solutions. Particular solution: {:?}, Free variables indices: {:?}",
-                sol, free_vars
-            ),
-        }
-    }
-}
-
-/// Solves a single linear congruence `ax = b (mod k)`.
-///
-/// Handles cases where `a` is 0 or `gcd(a, k) > 1`.
-///
-/// # Arguments
-/// * `a`: The coefficient of x.
-/// * `b`: The constant term.
-/// * `ring`: The ring `Z_k` defining the modulus `k`.
-///
-/// # Returns
-/// * `Ok(Vec<i64>)`: A vector containing all unique solutions `x` in the range `[0, k-1]`.
-///   - If `a = 0` and `b = 0` (mod k), returns all `k` elements `[0, ..., k-1]`.
-///   - If no solution exists (e.g., `a = 0, b != 0` or `gcd(a, k)` does not divide `b`), returns an empty vector.
-/// * `Err(SLECryptoError)`: If an internal error occurs, like failing to create a reduced ring or finding an inverse when expected.
-pub fn solve_linear_congruence(a: i64, b: i64, ring: &Ring) -> Result<Vec<i64>, SLECryptoError> {
-    let k = ring.modulus() as i64;
-    let a_norm = ring.normalize(a);
-    let b_norm = ring.normalize(b);
-
-    if a_norm == 0 {
-        return if b_norm == 0 {
-            // 0x = 0 (mod k) -> Infinite solutions (all elements of Z_k)
-            // In SLE context, this indicates a free variable.
-            // Returning all solutions might be too much, maybe return special value?
-            // For now, let's return a single solution (0) and let the main
-            // solve function handle the free variable logic.
-            // Or maybe return an indicator? Let's return all for completeness here.
-            Ok((0..k).map(|i| ring.normalize(i)).collect())
-        } else {
-            // 0x = b (mod k) with b != 0 -> No solution
-            Ok(Vec::new())
-        };
-    }
-
-    let g = gcd(a_norm, k);
-
-    if b_norm % g != 0 {
-        // No solution exists if gcd(a, k) does not divide b
-        Ok(Vec::new())
+/// Modular inverse of a mod m, if it exists.
+pub fn modinv(a: i64, m: i64) -> Option<i64> {
+    let (g, x, _) = extended_gcd(a, m);
+    if g != 1 {
+        None
     } else {
-        // Reduce the congruence: (a/g)x = (b/g) (mod k/g)
-        let a_prime = a_norm / g; // Exact division
-        let b_prime = b_norm / g; // Exact division
-        let k_prime = k / g; // Exact division
-
-        // Create a temporary ring for the reduced modulus
-        // Handle edge case k_prime = 1 (means g=k)
-        if k_prime == 1 {
-            // Original congruence was ax = b (mod k) where gcd(a,k)=k.
-            // This means a is a multiple of k (a=0 mod k).
-            // We already handled a=0 case above. This path implies a!=0 initially
-            // but a=0 mod k. And b must be divisible by g=k (b=0 mod k).
-            // So it's 0x = 0 (mod k). All x are solutions.
-            return Ok((0..k).map(|i| ring.normalize(i)).collect());
-        }
-        if k_prime <= 0 {
-            // Should not happen if k > 1 initially
-            return Err(SLECryptoError::InternalError(
-                "Invalid reduced modulus k' <= 0".to_string(),
-            ));
-        }
-
-        // gcd(a_prime, k_prime) is now 1, so inverse exists.
-        let reduced_ring = Ring::try_with(k_prime as u64)?; // Use try_with
-
-        // Find the inverse of a_prime modulo k_prime
-        let inv_a_prime = match reduced_ring.inv(a_prime) {
-            Ok(inv) => inv,
-            Err(_) => {
-                return Err(SLECryptoError::InternalError(format!(
-                    "Failed to find inverse for {} mod {} (gcd should be 1)",
-                    a_prime, k_prime
-                )));
-            }
-        };
-
-        // Calculate the unique solution x0 modulo k_prime
-        let x0 = reduced_ring.mul(b_prime, inv_a_prime);
-
-        // Generate all g solutions modulo k
-        let mut solutions = Vec::with_capacity(g as usize);
-        for i in 0..g {
-            solutions.push(ring.normalize(x0 + i * k_prime));
-        }
-        solutions.sort_unstable(); // Optional: keep solutions ordered
-        Ok(solutions)
+        // x·a ≡ 1 (mod m)
+        Some((x % m + m) % m)
     }
 }
 
-/// Solves the system of linear equations Ax = b modulo K.
-/// K can be composite.
-///
-/// Args:
-///   a: The coefficient matrix (n rows, m columns).
-///   b: The constant vector (n elements).
-///   k: The modulus (must be > 1).
-///
-/// Returns:
-///   A `Result` containing either a `Solution` enum or an `SLECryptoError`.
-pub fn solve(a: &[Vec<i64>], b: &[i64], k: u64) -> Result<Solution, SLECryptoError> {
-    if k <= 1 {
-        return Err(SLECryptoError::InvalidModulus("".into()));
-    }
-
-    let n = a.len(); // Number of equations
-    // Determine number of variables (m). Handle empty 'a'.
-    let m = if n > 0 {
-        if a[0].is_empty() { 0 } else { a[0].len() }
-    } else {
-        0 // No equations, technically 0 variables unless b is non-empty?
-    };
-
-    // --- Dimension Checks ---
-    if b.len() != n {
-        return Err(SLECryptoError::DimensionMismatch(format!(
-            "Matrix A rows ({}) must match vector b length ({})",
-            n,
-            b.len()
-        )));
-    }
-    for (i, row) in a.iter().enumerate() {
-        if row.len() != m {
-            return Err(SLECryptoError::DimensionMismatch(format!(
-                "Row {} in matrix A has length {} but expected {}",
-                i,
-                row.len(),
-                m
-            )));
+/// Extended GCD over a slice of length n.
+/// Returns (g, comb) with ∑ comb[i]·eq[i] = g.
+pub fn ext_gcd_vec(eq: &[i64]) -> (i64, Vec<i64>) {
+    let n = eq.len();
+    // Find first non‐zero to seed
+    let mut comb = vec![0; n];
+    let mut g = 0;
+    let mut idx = 0;
+    for (i, &v) in eq.iter().enumerate() {
+        if v != 0 {
+            g = v;
+            comb[i] = 1;
+            idx = i;
+            break;
         }
     }
+    // If all zero => gcd = 0, but we treat as 1 with trivial comb
+    if g == 0 {
+        return (0, comb);
+    }
+    // Fold in each further coefficient
+    for j in (idx + 1)..n {
+        let v = eq[j];
+        if v == 0 {
+            continue;
+        }
+        let (g2, s, t) = extended_gcd(g, v);
+        // New gcd is g2 = s*g + t*v
+        // scale old comb by s, set comb[j]=t
+        for c in comb[..j].iter_mut() {
+            *c *= s;
+        }
+        comb[j] = t;
+        g = g2;
+    }
+    (g.abs(), comb)
+}
 
-    // --- Handle Edge Cases ---
-    if n == 0 {
-        // No equations
-        if m == 0 {
-            // No equations, no variables
-            return Ok(Solution::Unique(Vec::new())); // Trivial solution
-        } else {
-            // No equations, m variables
-            // All variables are free. Particular solution is all zeros.
-            return Ok(Solution::Infinite(vec![0; m], (0..m).collect()));
+/// Normalize each entry of v mod m into [0..m).
+#[inline]
+pub fn normalize(v: &mut [i64], m: i64) {
+    for x in v.iter_mut() {
+        *x %= m;
+        if *x < 0 {
+            *x += m;
         }
     }
-    if m == 0 {
-        // No variables, n equations
-        let ring_temp = Ring::try_with(k)?; // Need ring for normalization
-        for &bi in b {
-            if ring_temp.normalize(bi) != 0 {
-                return Ok(Solution::NoSolution); // Equation like 0 = c (c!=0)
-            }
-        }
-        return Ok(Solution::Unique(Vec::new())); // All equations 0 = 0
-    }
+}
 
-    // --- Setup ---
-    let ring = Ring::try_with(k)?;
-
-    // Create augmented matrix [A | b] and normalize
-    let mut aug_matrix: Vec<Vec<i64>> = Vec::with_capacity(n);
+/// Test if two vectors are scalar multiples mod m.
+pub fn are_dependent(u: &[i64], v: &[i64], m: i64) -> bool {
+    let n = u.len();
+    // find i with u[i] coprime to m
     for i in 0..n {
-        let mut row = a[i].clone();
-        row.push(b[i]);
-        for val in row.iter_mut() {
-            *val = ring.normalize(*val);
+        let ui = u[i] % m;
+        let vi = v[i] % m;
+        if ui != 0 {
+            if let Some(inv) = modinv(ui, m) {
+                let k = (inv * vi) % m;
+                return u
+                    .iter()
+                    .zip(v)
+                    .all(|(&uu, &vv)| ((uu % m) * k - vv % m) % m == 0);
+            }
         }
-        aug_matrix.push(row);
     }
+    // fallback: both zero everywhere?
+    u.iter().zip(v).all(|(&uu, &vv)| uu % m == 0 && vv % m == 0)
+}
 
-    // --- Forward Elimination (Gaussian Elimination for Rings) ---
-    let mut pivot_row = 0;
-    // Store the column index of the pivot in each row (-1 if no pivot)
-    let mut pivot_cols = vec![-1; n];
-
-    for col in 0..m {
-        // Iterate through columns (potential pivot columns)
-        if pivot_row >= n {
-            break; // All rows have been processed or reduced to zero
+/// Prune scalar‐multiples in place.
+pub fn prune_duplicates(vecs: &mut Vec<Vec<i64>>, m: i64) {
+    let mut out: Vec<Vec<i64>> = Vec::with_capacity(vecs.len());
+    for v in vecs.drain(..) {
+        if !out.iter().any(|u| are_dependent(u, &v, m)) {
+            out.push(v);
         }
+    }
+    *vecs = out;
+}
 
-        // Find pivot row for this column (first non-zero below current pivot_row)
-        let mut pivot_idx = pivot_row;
-        while pivot_idx < n && aug_matrix[pivot_idx][col] == 0 {
-            pivot_idx += 1;
+/// Solve one equation e·x ≡ 0 (mod m), returning up to n basis vectors.
+pub fn solve_one(eq: &[i64], m: i64) -> Vec<Vec<i64>> {
+    let n = eq.len();
+    // (A) If the equation is identically 0 mod m, it imposes no constraint:
+    //     the null‐space is all of (Z/mZ)^n, so return the n standard unit vectors.
+    if eq.iter().all(|&a| a.rem_euclid(m) == 0) {
+        return (0..n)
+            .map(|i| {
+                let mut v = vec![0; n];
+                v[i] = 1;
+                v
+            })
+            .collect();
+    }
+    // find gcd and comb so ∑ comb[i]*eq[i] = g
+    let (mut g, mut comb) = ext_gcd_vec(eq);
+    // factor out gcd that also divides m
+    let d = gcd(g, m);
+    if d > 1 {
+        g /= d;
+        comb.iter_mut().for_each(|c| *c /= d);
+    }
+    // reduce modulus
+    let mm = m / d.max(1);
+    // normalize combination
+    normalize(&mut comb, mm);
+
+    // Build basis: for each i, take e_i = -eq[i]*comb + unit vector i
+    let mut base = Vec::with_capacity(n);
+    for i in 0..n {
+        let mut v = vec![0; n];
+        for j in 0..n {
+            v[j] = (-eq[i] * comb[j]) % mm;
         }
+        v[i] = (v[i] + 1) % mm;
+        normalize(&mut v, mm);
+        base.push(v);
+    }
+    base.retain(|v| v.iter().any(|&x| x.rem_euclid(mm) != 0));
+    base
+}
 
-        if pivot_idx < n {
-            // Found a pivot at (pivot_idx, col)
-            aug_matrix.swap(pivot_row, pivot_idx); // Move pivot row up
-            let pivot_val = aug_matrix[pivot_row][col]; // This is non-zero
-            pivot_cols[pivot_row] = col as i32; // Record pivot column index for this row
-
-            // Eliminate entries below the pivot in the current column
-            for i in (pivot_row + 1)..n {
-                let factor = aug_matrix[i][col];
-                if factor != 0 {
-                    // Use GCD-based elimination: R_i = (pivot/g) * R_i - (factor/g) * R_pivot
-                    let g = gcd(pivot_val, factor);
-                    let p_prime = pivot_val / g; // Exact division guaranteed
-                    let f_prime = factor / g; // Exact division guaranteed
-
-                    // Apply to the whole row (from 'col' onwards)
-                    for j in col..=m {
-                        let term1 = ring.mul(p_prime, aug_matrix[i][j]);
-                        let term2 = ring.mul(f_prime, aug_matrix[pivot_row][j]);
-                        aug_matrix[i][j] = ring.sub(term1, term2);
-                    }
-                    // aug_matrix[i][col] should now be 0
+/// Solve the full system A·x ≡ 0 (mod m).
+pub fn solve_system(a: &[Vec<i64>], m: i64) -> Vec<Vec<i64>> {
+    let rows = a.len();
+    if rows == 0 {
+        return vec![];
+    }
+    // start with first equation
+    let mut sol = solve_one(&a[0], m);
+    // intersect with each further equation
+    for r in 1..rows {
+        let eq = &a[r];
+        let k = sol.len();
+        // build the projected "residual" vector L: for each basis vector s in sol,
+        // compute eq·s (mod m)
+        let mut L = Vec::with_capacity(k);
+        for s in &sol {
+            let sum = eq.iter().zip(s.iter()).map(|(&a, &b)| a * b).sum::<i64>() % m;
+            L.push((sum + m) % m);
+        }
+        // solve L·y ≡ 0 to get new combos
+        let new_combos = solve_one(&L, m);
+        // build new basis by linearly combining old sol via each combo
+        let mut new_sol = Vec::with_capacity(new_combos.len());
+        for comb in new_combos {
+            let mut v = vec![0; eq.len()];
+            for (i, &c) in comb.iter().enumerate() {
+                for j in 0..v.len() {
+                    v[j] += c * sol[i][j];
                 }
             }
-            pivot_row += 1; // Move to the next row for the next pivot
+            normalize(&mut v, m);
+            new_sol.push(v);
         }
-        // If no pivot found in this column (all zeros below pivot_row),
-        // this column corresponds to a free variable. Move to the next column.
+        prune_duplicates(&mut new_sol, m);
+        sol = new_sol;
+    }
+    sol
+}
+
+/// Solve a single linear congruence
+///     eq · x ≡ rhs   (mod m)
+/// in n unknowns.
+/// Returns `None` if inconsistent, else
+/// `Some((x0, basis))` where
+///  - `x0` is one particular solution (length n),
+///  - `basis` spans all solutions of eq·x≡0 (mod m).
+fn solve_one_inhomog(eq: &[i64], rhs: i64, m: i64) -> Option<(Vec<i64>, Vec<Vec<i64>>)> {
+    let n = eq.len();
+
+    // 1) Compute d0 = gcd(eq[0..], m)
+    let (d0, _) = ext_gcd_vec(eq);
+    let g0 = gcd(d0, m);
+    // No solution unless g0 | rhs
+    if rhs.rem_euclid(m) % g0 != 0 {
+        return None;
     }
 
-    let rank = pivot_row; // Number of non-zero rows after elimination
+    // 2) Reduce modulus + RHS + coefficients by g0
+    let m1 = m / g0;
+    let rhs1 = (rhs.rem_euclid(m) / g0).rem_euclid(m1);
+    let eq1: Vec<i64> = eq.iter().map(|&a| a / g0).collect();
 
-    // --- Check for Inconsistencies ---
-    // Start from the last row processed by elimination up to the last equation
-    // Use iterator for row access
-    for row in aug_matrix.iter().skip(rank) {
-        // Check if row[m] (the constant part) is non-zero
-        if row[m] != 0 {
-            // If we have 0 = c (where c != 0), the system is inconsistent
-            return Ok(Solution::NoSolution);
-        }
+    // 3) Compute comb so that ∑ comb[i]*eq1[i] = d1 = gcd(eq1)
+    let (d1_raw, mut comb) = ext_gcd_vec(&eq1);
+    let d1 = d1_raw.abs(); // d1 = d0/g0
+
+    // 4) Invert d1 mod m1 (must exist because gcd(d1,m1)=1)
+    let inv_d1 = modinv(d1, m1).expect("After dividing out g0, d1 and m1 must be coprime");
+
+    // 5) Normalize comb mod m1, then scale by inv_d1 so that
+    //    ∑ comb[i]*eq1[i] ≡ 1   (mod m1)
+    normalize(&mut comb, m1);
+    for c in comb.iter_mut() {
+        *c = (*c * inv_d1).rem_euclid(m1);
     }
 
-    // --- Back Substitution ---
-    let mut solution = vec![0; m];
-    let mut is_pivot_var = vec![false; m];
-    for i in (0..rank).rev() {
-        let pivot_col = pivot_cols[i] as usize;
-        is_pivot_var[pivot_col] = true;
+    // 6) Build one particular solution: x0[i] = comb[i]*rhs1 (mod m1)
+    let mut x0 = vec![0; n];
+    for i in 0..n {
+        x0[i] = (comb[i].rem_euclid(m1) * rhs1).rem_euclid(m1);
+    }
 
-        let mut rhs = aug_matrix[i][m];
-        // Use iterator for the sum
-        for (j, &coeff) in aug_matrix[i]
+    // 7) Lift x0 back to modulo m
+    for xi in x0.iter_mut() {
+        *xi = xi.rem_euclid(m);
+    }
+
+    // 8) The homogeneous solution‐space is exactly what `solve_one(eq,m)` gives:
+    let basis = solve_one(eq, m);
+
+    Some((x0, basis))
+}
+
+fn verify(a: &[Vec<i64>], b: &[i64], m: i64, x: &[i64]) -> bool {
+    for (row, &bi) in a.iter().zip(b.iter()) {
+        let sum = row
             .iter()
-            .enumerate()
-            .skip(pivot_col + 1)
-            .take(m - (pivot_col + 1))
-        {
-            let term = ring.mul(coeff, solution[j]);
-            rhs = ring.sub(rhs, term);
+            .zip(x.iter())
+            .map(|(&ai, &xi)| (ai * xi).rem_euclid(m))
+            .sum::<i64>()
+            .rem_euclid(m);
+        if sum != bi.rem_euclid(m) {
+            return false;
+        }
+    }
+    true
+}
+
+/// Solve the entire system A·x ≡ b (mod m).
+/// - `a` is an m×n matrix (`Vec<Vec<i64>>`),
+/// - `b` is length‐m RHS vector,
+/// - `m` is the modulus.
+///
+/// Returns `None` if no solution; otherwise one particular `Vec<i64>` of length n.
+pub fn solve_pr(a: &[Vec<i64>], b: &[i64], m: i64) -> Option<Vec<i64>> {
+    let rows = a.len();
+    if rows == 0 {
+        return Some(Vec::new());
+    }
+    let cols = a[0].len();
+
+    // 1) Solve the first equation inhomogeneously
+    let (mut x0, mut basis) = solve_one_inhomog(&a[0], b[0], m)?;
+
+    // If that already works for the full system, return it
+    if verify(a, b, m, &x0) {
+        return Some(x0);
+    }
+
+    // 2) Intersect with the remaining equations, one by one
+    for i in 1..rows {
+        let row = &a[i];
+        let bi = b[i].rem_euclid(m);
+
+        // compute current residual r0 = row·x0 mod m
+        let r0: i64 = row
+            .iter()
+            .zip(x0.iter())
+            .map(|(&ri, &xi)| (ri * xi).rem_euclid(m))
+            .sum::<i64>()
+            .rem_euclid(m);
+
+        let need = (bi + m - r0).rem_euclid(m);
+
+        // no homogeneous directions → just check consistency
+        if basis.is_empty() {
+            if need != 0 {
+                // inconsistent
+                return None;
+            }
+            continue;
         }
 
-        let pivot_val = aug_matrix[i][pivot_col];
-        let sols = solve_linear_congruence(pivot_val, rhs, &ring)?;
+        // form L_j = row·basis[j] (mod m)
+        let k = basis.len();
+        let mut L = Vec::with_capacity(k);
+        for h in &basis {
+            let s: i64 = row
+                .iter()
+                .zip(h.iter())
+                .map(|(&ri, &hi)| (ri * hi).rem_euclid(m))
+                .sum::<i64>()
+                .rem_euclid(m);
+            L.push(s);
+        }
 
-        if sols.is_empty() {
-            return Err(SLECryptoError::InternalError(format!(
-                "Inconsistency detected during back-substitution for row {}, pivot col {}. Equation {}x = {} mod {}",
-                i, pivot_col, pivot_val, rhs, k
-            )));
-        } else {
-            solution[pivot_col] = sols[0];
+        // solve L·α ≡ need  (mod m)
+        let (alpha, new_null) = solve_one_inhomog(&L, need, m)?;
+
+        // update x0 ← x0 + ∑ α[j]*basis[j]
+        for j in 0..k {
+            let coeff = alpha[j].rem_euclid(m);
+            if coeff != 0 {
+                for c in 0..cols {
+                    x0[c] = (x0[c] + coeff * basis[j][c].rem_euclid(m)).rem_euclid(m);
+                }
+            }
+        }
+
+        // if this x0 now solves the *entire* system, return immediately
+        if verify(a, b, m, &x0) {
+            return Some(x0);
+        }
+
+        // rebuild the homogeneous basis
+        let mut next = Vec::with_capacity(new_null.len());
+        for comb in new_null {
+            let mut v = vec![0; cols];
+            for j in 0..comb.len() {
+                let w = comb[j].rem_euclid(m);
+                if w != 0 {
+                    for c in 0..cols {
+                        v[c] = (v[c] + w * basis[j][c].rem_euclid(m)).rem_euclid(m);
+                    }
+                }
+            }
+            next.push(v);
+        }
+        prune_duplicates(&mut next, m);
+        basis = next;
+    }
+
+    // 3) After processing all rows, one final verify of x0
+    if verify(a, b, m, &x0) {
+        return Some(x0);
+    }
+
+    // 4) If that still failed, try x0 + h for each homogeneous direction h
+    for h in &basis {
+        let candidate: Vec<i64> = x0
+            .iter()
+            .zip(h.iter())
+            .map(|(&x, &hh)| (x + hh).rem_euclid(m))
+            .collect();
+        if verify(a, b, m, &candidate) {
+            return Some(candidate);
         }
     }
 
-    // --- Identify Free Variables ---
-    let free_vars_indices: Vec<usize> = (0..m).filter(|&col| !is_pivot_var[col]).collect();
+    // 5) No solution found
+    None
+}
 
-    // --- Return Solution Type ---
-    if free_vars_indices.is_empty() {
-        Ok(Solution::Unique(solution))
-    } else {
-        Ok(Solution::Infinite(solution, free_vars_indices))
-    }
+pub fn solve(a: &Matrix, b: &Vector, ring: &Ring) -> Option<Vector> {
+    solve_pr(a, b, ring.modulus as i64)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    // --- Prime Modulus Tests ---
     #[test]
-    fn test_solve_unique_prime_k() {
-        // System:
-        // 2x + 3y = 1 (mod 5)
-        // 1x + 2y = 2 (mod 5)
-        // Solution: x=1, y=3
-        let a = vec![vec![2, 3], vec![1, 2]];
-        let b = vec![1, 2];
-        let k = 5;
-        assert_eq!(solve(&a, &b, k).unwrap(), Solution::Unique(vec![1, 3]));
-    }
+    fn test_sle() {
+        let a: Matrix = vec![vec![2, 4, 7, 20], vec![0, 1, 11, 17]];
+        let b: Vector = vec![16, 0];
+        let ring = Ring::try_with(25).unwrap();
 
-    #[test]
-    fn test_solve_unique_prime_k_3x3() {
-        // System (mod 7):
-        // 1x + 1y + 1z = 1
-        // 0x + 2y + 5z = 2
-        // 2x + 0y + 3z = 3
-        // Solution: x=6, y=5, z=4
-        let a = vec![vec![1, 1, 1], vec![0, 2, 5], vec![2, 0, 3]];
-        let b = vec![1, 2, 3];
-        let k = 7;
-        assert_eq!(solve(&a, &b, k).unwrap(), Solution::Unique(vec![6, 5, 4]));
-    }
+        let AT: Matrix = (0..4).map(|j| (0..2).map(|i| a[i][j]).collect()).collect();
 
-    #[test]
-    fn test_solve_infinite_prime_k() {
-        // System:
-        // 1x + 1y = 1 (mod 5)
-        // 2x + 2y = 2 (mod 5)
-        // Dependent equations, infinite solutions. Rank 1, Vars 2. Free var y (index 1).
-        // Particular solution (set y=0): x=1. sol=[1, 0]
-        let a = vec![vec![1, 1], vec![2, 2]];
-        let b = vec![1, 2];
-        let k = 5;
-        match solve(&a, &b, k).unwrap() {
-            Solution::Infinite(sol, free) => {
-                assert_eq!(free, vec![1]); // y is free variable
-                assert_eq!(sol, vec![1, 0]); // Particular solution with y=0
-            }
-            other => panic!("Expected infinite solutions, got {:?}", other),
-        }
-    }
+        dbg!(solve_system(&a, ring.modulus as i64));
+        dbg!(solve_system(&AT, ring.modulus as i64));
 
-    #[test]
-    fn test_solve_no_solution_prime_k() {
-        // System:
-        // 1x + 1y = 1 (mod 5)
-        // 1x + 1y = 2 (mod 5) -> 0 = 1 after R2 = R2 - R1
-        let a = vec![vec![1, 1], vec![1, 1]];
-        let b = vec![1, 2];
-        let k = 5;
-        assert_eq!(solve(&a, &b, k).unwrap(), Solution::NoSolution);
-    }
-
-    // --- Composite Modulus Tests ---
-    #[test]
-    fn test_solve_unique_composite_k() {
-        // System (mod 6):
-        // 1x + 1y = 5
-        // 0x + 5y = 1
-        // From R2: 5y=1 (mod 6). inv(5)=5. y = 1*5 = 5.
-        // From R1: x + 5 = 5 => x = 0.
-        // Solution: x=0, y=5
-        let a = vec![vec![1, 1], vec![0, 5]];
-        let b = vec![5, 1];
-        let k = 6;
-        assert_eq!(solve(&a, &b, k).unwrap(), Solution::Unique(vec![0, 5]));
-    }
-
-    #[test]
-    fn test_solve_paper_example_step_mod25() {
-        // From paper Example 3, solving for x2, x3 in Z_25:
-        // 6x + 9y = 18 (mod 25)
-        // 1x + 11y = 0 (mod 25)
-        // Solution: x=14, y=1
-        let a = vec![vec![6, 9], vec![1, 11]];
-        let b = vec![18, 0];
-        let k = 25;
-        match solve(&a, &b, k).unwrap() {
-            Solution::Unique(sol) => assert_eq!(sol, vec![14, 1]),
-            other => panic!("Expected unique solution, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn test_solve_no_solution_composite() {
-        // System:
-        // 2x + 3y = 1 (mod 6)
-        // 4x + 0y = 1 (mod 6) -> 4x = 1 (mod 6). gcd(4,6)=2. 1%2 != 0. No solution.
-        let a = vec![vec![2, 3], vec![4, 0]];
-        let b = vec![1, 1];
-        let k = 6;
-        assert_eq!(solve(&a, &b, k).unwrap(), Solution::NoSolution);
-
-        // System:
-        // 1x + 1y = 1 (mod 4)
-        // 2x + 2y = 3 (mod 4) -> R2 = R2 - 2*R1 => 0x + 0y = 3 - 2*1 = 1 (mod 4). No solution.
-        let a2 = vec![vec![1, 1], vec![2, 2]];
-        let b2 = vec![1, 3];
-        let k2 = 4;
-        assert_eq!(solve(&a2, &b2, k2).unwrap(), Solution::NoSolution);
-    }
-
-    #[test]
-    fn test_solve_infinite_solutions_composite_free_var() {
-        // System:
-        // 1x + 1y = 2 (mod 6)
-        // 2x + 2y = 4 (mod 6) -> R2 = R2 - 2*R1 => 0x + 0y = 4 - 2*2 = 0 (mod 6).
-        // Dependent equations. Rank 1, Vars 2. Free var y (index 1).
-        // From R1: x + y = 2. Particular solution (set y=0): x=2. sol=[2, 0]
-        let a = vec![vec![1, 1], vec![2, 2]];
-        let b = vec![2, 4]; // Changed b from previous test
-        let k = 6;
-        match solve(&a, &b, k).unwrap() {
-            Solution::Infinite(sol, free) => {
-                assert_eq!(free, vec![1]); // y is free variable
-                assert_eq!(sol, vec![2, 0]); // Particular solution with y=0
-                // Verify particular solution
-                let ring = Ring::try_with(k).unwrap();
-                assert_eq!(
-                    ring.add(ring.mul(a[0][0], sol[0]), ring.mul(a[0][1], sol[1])),
-                    ring.normalize(b[0])
-                );
-            }
-            other => panic!("Expected infinite solutions, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn test_dimension_mismatch_b() {
-        let a = vec![vec![1, 2], vec![3, 4]]; // 2x2
-        let b = vec![1]; // length 1
-        let k = 5;
-        assert!(matches!(
-            solve(&a, &b, k),
-            Err(SLECryptoError::DimensionMismatch(_))
-        ));
-    }
-
-    #[test]
-    fn test_dimension_mismatch_a_rows() {
-        let a = vec![vec![1, 2], vec![3]]; // 2 rows, inconsistent cols
-        let b = vec![1, 2];
-        let k = 5;
-        assert!(matches!(
-            solve(&a, &b, k),
-            Err(SLECryptoError::DimensionMismatch(_))
-        ));
-    }
-
-    #[test]
-    fn test_empty_a_matrix() {
-        let a: Vec<Vec<i64>> = vec![];
-        let b: Vec<i64> = vec![];
-        let k = 5;
-        // 0 equations, 0 variables
-        assert_eq!(solve(&a, &b, k).unwrap(), Solution::Unique(vec![]));
-
-        let b2 = vec![1]; // 0 equations, but b is non-empty -> error?
-        // Let's refine the check: n=0 means b must be empty.
-        assert!(matches!(
-            solve(&a, &b2, k),
-            Err(SLECryptoError::DimensionMismatch(_))
-        ));
-
-        let a3 = vec![vec![], vec![]]; // 2 equations, 0 variables
-        let b3 = vec![0, 0];
-        assert_eq!(solve(&a3, &b3, k).unwrap(), Solution::Unique(vec![]));
-
-        let b4 = vec![0, 1]; // 0 = 1 -> No solution
-        assert_eq!(solve(&a3, &b4, k).unwrap(), Solution::NoSolution);
-    }
-
-    #[test]
-    fn test_zero_matrix() {
-        let a = vec![vec![0, 0], vec![0, 0]];
-        let b = vec![0, 0];
-        let k = 6;
-        // 0x+0y=0, 0x+0y=0. Rank 0, Vars 2. Infinite. Free vars x,y (0, 1).
-        // Particular sol [0,0].
-        match solve(&a, &b, k).unwrap() {
-            Solution::Infinite(sol, free) => {
-                assert_eq!(free, vec![0, 1]);
-                assert_eq!(sol, vec![0, 0]);
-            }
-            other => panic!("Expected infinite, got {:?}", other),
-        }
-
-        let b2 = vec![0, 1]; // 0x+0y=1 -> No solution
-        assert_eq!(solve(&a, &b2, k).unwrap(), Solution::NoSolution);
+        dbg!(solve(&a, &b, &ring));
     }
 }

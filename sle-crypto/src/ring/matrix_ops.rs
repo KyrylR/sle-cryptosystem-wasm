@@ -1,5 +1,6 @@
 use crate::errors::SLECryptoError;
 use crate::ring::{Matrix, Ring, Vector};
+use crate::sle::solve;
 
 /// Computes the matrix-vector product `y = Ax` modulo `m`, where `m` is the modulus of the ring.
 ///
@@ -225,93 +226,55 @@ pub fn matrix_rank(matrix: &Matrix, ring: &Ring) -> Result<usize, SLECryptoError
     Ok(rank)
 }
 
-/// Attempts to find the inverse of a square matrix modulo `m` using Gaussian elimination.
-///
-/// # Errors
-///
-/// Returns `SLECryptoError::DimensionMismatch` if the matrix is not square.
-/// Returns `SLECryptoError::InternalError` if the matrix is singular (non-invertible) or
-/// if an element requiring inversion does not have a modular inverse.
+/// Attempts to find the inverse of a square matrix modulo `m`.
 pub fn matrix_inverse(matrix: &Matrix, ring: &Ring) -> Result<Matrix, SLECryptoError> {
     let n = matrix.len();
+    // empty = empty
     if n == 0 {
-        return Ok(Matrix::new());
+        return Ok(Vec::new());
     }
-    // Check if square
-    for row in matrix {
+    // check square
+    for row in matrix.iter() {
         if row.len() != n {
             return Err(SLECryptoError::DimensionMismatch(
-                "Matrix must be square for inversion".to_string(),
+                "matrix_inverse: matrix must be square".into(),
             ));
         }
     }
 
-    // Create augmented matrix [A | I]
-    let mut aug = Vec::with_capacity(n);
-    for (i, row_vec) in matrix.iter().enumerate() {
-        let mut row = row_vec.clone();
-        for j in 0..n {
-            row.push(if i == j { 1 } else { 0 });
-        }
-        // Normalize row
-        for val in row.iter_mut() {
-            *val = ring.normalize(*val);
-        }
-        aug.push(row);
-    }
+    // normalize into an explicit Vec<Vec<i64>>
+    let a: Matrix = matrix
+        .iter()
+        .map(|row| {
+            row.iter()
+                .map(|&v| ring.normalize(v).rem_euclid(ring.modulus() as i64))
+                .collect()
+        })
+        .collect();
 
-    // Gaussian elimination to get [I | A^-1]
-    for i in 0..n {
-        let mut pivot_row = i;
-        while pivot_row < n && aug[pivot_row][i] == 0 {
-            pivot_row += 1;
-        }
+    // We'll build inverse one column at a time:
+    // solve A x = e_j  (mod m)
+    let m = ring.modulus();
+    let mut inv = vec![vec![0; n]; n];
 
-        if pivot_row == n {
-            return Err(SLECryptoError::InternalError(format!(
-                "Matrix is singular (no pivot found for column {})",
-                i
-            )));
-        }
-
-        aug.swap(i, pivot_row);
-
-        let pivot_val = aug[i][i];
-        let inv = ring.inv(pivot_val).map_err(|_| {
+    for j in 0..n {
+        // RHS = standard basis vector e_j
+        let mut b = vec![0; n];
+        b[j] = 1;
+        // call your solver
+        let x = solve(&a, &b, ring).ok_or_else(|| {
             SLECryptoError::InternalError(format!(
-                "Matrix is singular (pivot {} in row {} has no inverse mod {})",
-                pivot_val,
-                i,
-                ring.modulus()
+                "matrix_inverse: system A x = e_{} had no solution mod {}",
+                j, m
             ))
         })?;
-
-        for j in i..(2 * n) {
-            aug[i][j] = ring.mul(aug[i][j], inv);
-        }
-
-        for row_idx in 0..n {
-            if row_idx != i {
-                let factor = aug[row_idx][i];
-                if factor != 0 {
-                    for col_idx in i..(2 * n) {
-                        let term = ring.mul(factor, aug[i][col_idx]);
-                        aug[row_idx][col_idx] = ring.sub(aug[row_idx][col_idx], term);
-                    }
-                }
-            }
+        // copy x into column j of inv
+        for i in 0..n {
+            inv[i][j] = x[i].rem_euclid(m as i64);
         }
     }
 
-    // Extract inverse matrix [A^-1] from the right side
-    let mut inv_matrix = vec![vec![0; n]; n];
-    for i in 0..n {
-        for j in 0..n {
-            inv_matrix[i][j] = aug[i][n + j];
-        }
-    }
-
-    Ok(inv_matrix)
+    Ok(inv)
 }
 
 #[cfg(test)]
@@ -350,6 +313,17 @@ mod tests {
 
     #[test]
     fn test_matrix_vector_mul_ok() {
+        let ring = test_ring();
+        let a = vec![vec![1, 2], vec![3, 4]];
+        let x = vec![5, 6];
+        // R1: (1*5 + 2*6) % 13 = (5 + 12) % 13 = 17 % 13 = 4
+        // R2: (3*5 + 4*6) % 13 = (15 + 24) % 13 = (2 + 11) % 13 = 13 % 13 = 0
+        let expected = vec![4, 0];
+        assert_eq!(matrix_vector_mul(&a, &x, &ring).unwrap(), expected);
+    }
+
+    #[test]
+    fn test_matrix_vector_mul_ok_2() {
         let ring = test_ring();
         let a = vec![vec![1, 2], vec![3, 4]];
         let x = vec![5, 6];

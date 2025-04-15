@@ -1,14 +1,17 @@
+use crate::errors::SLECryptoError;
+use crate::keypair::helper::{map_matrix, map_vector};
+use crate::keypair::shared_params::SharedParams;
+use crate::preset::encoding_table::INDEX_TO_BASE64_CHAR_MAP;
+use crate::ring::matrix_ops::{
+    identity_matrix, matrix_inverse, matrix_mul, matrix_vector_mul, vector_add, vector_sub,
+};
+use crate::ring::{Matrix, Ring, Vector};
+use crate::sle::solve_system;
+
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use crate::errors::SLECryptoError;
-use crate::keypair::shared_params::SharedParams;
-use crate::ring::matrix_ops::{identity_matrix, matrix_inverse, matrix_mul, matrix_rank, matrix_vector_mul, vector_add, vector_sub};
-use crate::ring::{Matrix, Vector};
 
-use crate::keypair::helper::{map_matrix, map_vector};
-use rand::random;
 use serde::{Deserialize, Serialize};
-use crate::preset::encoding_table::INDEX_TO_BASE64_CHAR_MAP;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PrivateKey {
@@ -16,7 +19,6 @@ pub struct PrivateKey {
     pub matrix_A: Matrix,
     pub matrix_B: Matrix,
     pub matrix_B_inv: Matrix,
-    pub vector_a: Vector,
     pub vector_Ba: Vector,
 }
 
@@ -29,7 +31,7 @@ pub struct PublicKey {
 
 impl PrivateKey {
     pub fn try_with(shared_params: SharedParams) -> Result<Self, SLECryptoError> {
-        let (a_matrix, b_eff_matrix, b_eff_inv_matrix, a_inner_eff, a_outer_eff) =
+        let (a_matrix, b_eff_matrix, b_eff_inv_matrix, a_outer_eff) =
             generate_key_components(&shared_params, 2)?;
 
         Ok(Self {
@@ -37,7 +39,6 @@ impl PrivateKey {
             matrix_A: a_matrix,
             matrix_B: b_eff_matrix,
             matrix_B_inv: b_eff_inv_matrix,
-            vector_a: a_inner_eff,
             vector_Ba: a_outer_eff,
         })
     }
@@ -82,16 +83,20 @@ impl PrivateKey {
             .collect();
 
         // Reconstruct Base64 string and remove padding
-        let base64_string_with_padding: String = base64_chars.into_iter().collect();
-        let base64_string = base64_string_with_padding.trim_end_matches('=').to_string();
+        let base64_string: String = base64_chars.into_iter().collect();
 
         // Decode Base64 string to original bytes
-        let decoded_bytes = STANDARD.decode(&base64_string)
+        let decoded_bytes = STANDARD
+            .decode(&base64_string)
             .map_err(|e| SLECryptoError::InternalError(format!("Base64 decoding failed: {}", e)))?;
 
         // Convert bytes to UTF-8 string
-        String::from_utf8(decoded_bytes)
-            .map_err(|e| SLECryptoError::InternalError(format!("Failed to convert decoded bytes to UTF-8: {}", e)))
+        String::from_utf8(decoded_bytes).map_err(|e| {
+            SLECryptoError::InternalError(format!(
+                "Failed to convert decoded bytes to UTF-8: {}",
+                e
+            ))
+        })
     }
 
     pub fn decrypt_block(&self, block: (Vector, Vector)) -> Result<Vector, SLECryptoError> {
@@ -109,170 +114,148 @@ impl PrivateKey {
         let ring = &self.shared_params.inner_structure.ring;
 
         // 1. Calculate intermediate = B_inv * (d1 - vector_ba)
-        let d1_minus_outer_zm = vector_sub(&d1, &self.vector_Ba, &ring)?;
-        let b_inv_mult_zm = matrix_vector_mul(&self.matrix_B_inv, &d1_minus_outer_zm, &ring)?;
+        let d1_minus_outer_zm = vector_sub(&d1, &self.vector_Ba, ring)?;
+        let b_inv_mult_zm = matrix_vector_mul(&self.matrix_B_inv, &d1_minus_outer_zm, ring)?;
 
         // 2. multiply by A: result is A * x + A * a_bar = v + d
-        let a_mut_sum = matrix_vector_mul(&self.matrix_A, &b_inv_mult_zm, &ring)?;
+        let a_mut_sum = matrix_vector_mul(&self.matrix_A, &b_inv_mult_zm, ring)?;
 
         // 3. Subtract d: result is A * x_bar = v
-        let v_zm = vector_sub(&a_mut_sum, &d, &ring)?;
+        let v_zm = vector_sub(&a_mut_sum, &d, ring)?;
 
         Ok(v_zm)
     }
+}
+
+/// Randomly generate a p×q matrix A over Z/m with the property that
+///  - rank(A)=p (equivalently A * y≡0 has only the trivial solution)
+fn make_good_matrix(p: usize, q: usize, ring: &Ring) -> Result<Matrix, SLECryptoError> {
+    let m = ring.modulus();
+    let mut attempts = 0;
+
+    loop {
+        attempts += 1;
+        if attempts > 100000 {
+            return Err(SLECryptoError::InternalError(
+                "Could not generate A of full rank with an invertible p×p minor".into(),
+            ));
+        }
+
+        let mut A: Matrix = vec![vec![0; q]; p];
+        for row in &mut A {
+            for cell in row.iter_mut() {
+                *cell = ring.normalize(rand::random::<i64>());
+            }
+        }
+
+        // solve one homogeneous system A * y = 0
+        let null_of_A = solve_system(&A, m as i64);
+        // if ns contains any nonzero vector => rows not independent
+        let only_zero = null_of_A
+            .iter()
+            .all(|v| v.iter().all(|&x| x.rem_euclid(m as i64) == 0));
+
+        if !only_zero {
+            continue; // dependent rows, regenerate
+        }
+        return Ok(A);
+    }
+}
+
+/// Helper: generate one random invertible p×p matrix (and its inverse)
+fn make_invertible_pp(p: usize, ring: &Ring) -> Result<(Matrix, Matrix), SLECryptoError> {
+    for _ in 0..1000 {
+        // random p×p
+        let mut M = vec![vec![0; p]; p];
+        for row in &mut M {
+            for x in row.iter_mut() {
+                *x = ring.normalize(rand::random::<i64>());
+            }
+        }
+        // try invert
+        if let Ok(Minv) = matrix_inverse(&M, ring) {
+            return Ok((M, Minv));
+        }
+    }
+    Err(SLECryptoError::InternalError(
+        "could not generate invertible p×p after 1000 tries".into(),
+    ))
 }
 
 /// Private helper function to generate the core components for key generation based on 'r' steps.
 ///
 /// Generates matrix A, sequences Bi and ai, and calculates effective B, B_inv, a_inner, a_outer.
 fn generate_key_components(
-    shared_params: &SharedParams,
+    shared: &SharedParams,
     r: usize,
-) -> Result<(Matrix, Matrix, Matrix, Vector, Vector), SLECryptoError> {
+) -> Result<(Matrix, Matrix, Matrix, Vector), SLECryptoError> {
     if r == 0 {
         return Err(SLECryptoError::InvalidParameters(
-            "Number of transformation steps 'r' must be at least 1".to_string(),
+            "r must be at least 1".into(),
         ));
     }
+    let ring = &shared.inner_structure.ring;
+    let p = shared.equation_count;
+    let q = shared.variables_count;
 
-    let ring = &shared_params.inner_structure.ring;
-    let equation_count = shared_params.equation_count;
-    let variables_count = shared_params.variables_count;
+    // 1) full‐rank A: p×q
+    let A = make_good_matrix(p, q, ring)?;
 
-    // 1. Generate matrix A (p x q) with rank p over Z_m
-    let a_matrix: Matrix;
-    let mut attempts_a = 0;
-    loop {
-        if attempts_a > 100 {
-            return Err(SLECryptoError::InternalError(
-                "Failed to generate matrix A with rank p after multiple attempts".to_string(),
-            ));
-        }
-        let mut temp_a = vec![vec![0; variables_count]; equation_count];
-        for row in temp_a.iter_mut() {
-            for val in row.iter_mut() {
-                *val = ring.normalize(random::<i64>());
-            }
-        }
-        match matrix_rank(&temp_a, ring) {
-            Ok(rank) => {
-                if rank == equation_count {
-                    a_matrix = temp_a;
-                    break;
-                } else {
-                    attempts_a += 1;
-                }
-            }
-            Err(e) => {
-                return Err(SLECryptoError::InternalError(format!(
-                    "Error during rank calculation for matrix A: {}",
-                    e
-                )));
-            }
-        }
+    // 2) r random invertible p×p matrices B_i and their inverses
+    let mut Bs = Vec::with_capacity(r);
+    let mut Binvs = Vec::with_capacity(r);
+    for _ in 0..r {
+        let (B, b_inv) = make_invertible_pp(p, ring)?;
+        Bs.push(B);
+        Binvs.push(b_inv);
     }
 
-    // Helper function to generate an invertible p x p matrix and its inverse
-    let generate_invertible_matrix = || -> Result<(Matrix, Matrix), SLECryptoError> {
-        let mut attempts = 0;
-        loop {
-            if attempts > 100 {
-                return Err(SLECryptoError::InternalError(
-                    "Failed to generate invertible matrix after multiple attempts".to_string(),
-                ));
-            }
-            let mut temp_b = vec![vec![0; equation_count]; equation_count];
-            for row in temp_b.iter_mut() {
-                for val in row.iter_mut() {
-                    *val = ring.normalize(random::<i64>());
-                }
-            }
-            match matrix_inverse(&temp_b, ring) {
-                Ok(inv) => return Ok((temp_b, inv)),
-                Err(_) => attempts += 1,
-            }
+    // 3) r+1 random shift‐vectors a_1…a_{r+1}
+    let mut shifts = Vec::with_capacity(r + 1);
+    for _ in 0..(r + 1) {
+        let v: Vector = (0..p)
+            .map(|_| ring.normalize(rand::random::<i64>()))
+            .collect();
+        shifts.push(v);
+    }
+
+    // 4) B_eff = B_r * B_{r-1} * … * B_1
+    let B_eff = {
+        let mut acc = identity_matrix(p);
+        for Bi in &Bs {
+            acc = matrix_mul(Bi, &acc, ring)
+                .map_err(|e| SLECryptoError::InternalError(format!("B_eff mul failed: {}", e)))?;
         }
+        acc
+    };
+    // 5) B_eff_inv = B_1^{-1} * … * B_r^{-1}
+    let B_eff_inv = {
+        let mut acc = identity_matrix(p);
+        for Binv in &Binvs {
+            acc = matrix_mul(&acc, Binv, ring).map_err(|e| {
+                SLECryptoError::InternalError(format!("B_eff_inv mul failed: {}", e))
+            })?;
+        }
+        acc
     };
 
-    // 2. Generate r pairs of (Bi, Bi_inv)
-    let mut b_matrices = Vec::with_capacity(r);
-    let mut b_inv_matrices = Vec::with_capacity(r);
-    for _ in 0..r {
-        let (b, b_inv) = generate_invertible_matrix()?;
-        b_matrices.push(b);
-        b_inv_matrices.push(b_inv);
-    }
-
-    // 3. Generate r+2 vectors a0, a1, ..., ar, ar+1
-    let mut a_vectors = Vec::with_capacity(r + 2);
-    for _ in 0..(r + 2) {
-        let mut a_vec = vec![0; equation_count];
-        for val in a_vec.iter_mut() {
-            *val = ring.normalize(random::<i64>());
-        }
-        a_vectors.push(a_vec);
-    }
-
-    // 4. Calculate effective parameters B_eff, B_eff_inv, a_inner, a_outer
-
-    // B_eff = Br * ... * B1
-    let mut b_eff_matrix = b_matrices[0].clone();
-    for i in 1..r {
-        b_eff_matrix = matrix_mul(&b_matrices[i], &b_eff_matrix, ring).map_err(|e| {
-            SLECryptoError::InternalError(format!("B_eff calculation failed: {}", e))
+    // 6) a_outer = a_{r+1} + sum_{j=1..r} (B_r … B_{j+1}) * a_j
+    let mut a_out = shifts[r].clone(); // start with a_{r+1}
+    let mut suffix = identity_matrix(p); // initially Br…B_{r+1}=I
+    for j in (0..r).rev() {
+        // prefix = B_r … B_{j+1}
+        let aj = &shifts[j];
+        let term = matrix_vector_mul(&suffix, aj, ring).map_err(|e| {
+            SLECryptoError::InternalError(format!("a_out term failed j={}: {}", j, e))
+        })?;
+        a_out = vector_add(&a_out, &term, ring).map_err(|e| {
+            SLECryptoError::InternalError(format!("a_out add failed j={}: {}", j, e))
+        })?;
+        // extend suffix ← B_{j+1} * suffix
+        suffix = matrix_mul(&Bs[j], &suffix, ring).map_err(|e| {
+            SLECryptoError::InternalError(format!("suffix mul failed j={}: {}", j, e))
         })?;
     }
 
-    // B_eff_inv = B1_inv * ... * Br_inv
-    let mut b_eff_inv_matrix = b_inv_matrices[0].clone();
-    for i in 1..r {
-        b_eff_inv_matrix =
-            matrix_mul(&b_eff_inv_matrix, &b_inv_matrices[i], ring).map_err(|e| {
-                SLECryptoError::InternalError(format!("B_eff_inv calculation failed: {}", e))
-            })?;
-    }
-
-    // a_inner = a0 (which is a_vectors[0])
-    let a_inner_eff = a_vectors[0].clone();
-
-    // a_outer = Sum_{j=1..r} (Br...B{j+1}) * aj + a{r+1}
-    let mut a_outer_eff = a_vectors[r + 1].clone(); // Start with a_{r+1}
-    let mut b_product_suffix = identity_matrix(equation_count);
-
-    // Loop j from r down to 1
-    for j in (1..=r).rev() {
-        // b_product_suffix currently holds Br...B{j+1}
-        let current_a = &a_vectors[j];
-        let term = matrix_vector_mul(&b_product_suffix, current_a, ring).map_err(|e| {
-            SLECryptoError::InternalError(format!(
-                "a_outer calculation term failed (j={}): {}",
-                j, e
-            ))
-        })?;
-
-        a_outer_eff = vector_add(&a_outer_eff, &term, ring).map_err(|e| {
-            SLECryptoError::InternalError(format!(
-                "a_outer calculation add failed (j={}): {}",
-                j, e
-            ))
-        })?;
-
-        // Update suffix product for next iteration (j-1): Need Br...Bj
-        // Pre-multiply by Bj (which is b_matrices[j-1])
-        let b_j = &b_matrices[j - 1];
-        b_product_suffix = matrix_mul(b_j, &b_product_suffix, ring).map_err(|e| {
-            SLECryptoError::InternalError(format!(
-                "a_outer calculation suffix product failed (j={}): {}",
-                j, e
-            ))
-        })?;
-    }
-
-    Ok((
-        a_matrix,
-        b_eff_matrix,
-        b_eff_inv_matrix,
-        a_inner_eff,
-        a_outer_eff,
-    ))
+    Ok((A, B_eff, B_eff_inv, a_out))
 }

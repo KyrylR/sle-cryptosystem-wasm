@@ -14,7 +14,7 @@ pub struct Isomorphism {
 }
 
 impl Isomorphism {
-    /// Implements the GEN-G(a, c, l, k) algorithm. TODO: rewrite.
+    /// Implements the GEN-G(a, c, l, k) algorithm.
     ///
     /// Generates a defining sequence `P` used for constructing ring operation tables.
     ///
@@ -145,7 +145,9 @@ impl Isomorphism {
         // Verify the reverse mapping is correct
         for i in 0..k_usize {
             if b[reverse_b[i] as usize] != i as i64 {
-                return Err(SLECryptoError::InternalError("Failed to create reverse mapping for definite_string".to_string()));
+                return Err(SLECryptoError::InternalError(
+                    "Failed to create reverse mapping for definite_string".to_string(),
+                ));
             }
         }
 
@@ -220,23 +222,17 @@ mod tests {
     fn test_gcd_ak_constraint_error() {
         let result = Isomorphism::gen_g(2, 4, 2, 6, TEST_SEED);
         assert!(result.is_err());
-        // assert_eq!(
-        //     result.err().unwrap(),
-        //     SLECryptoError::GcdAKConstraintNotMet(2)
-        // );
     }
 
     #[test]
     fn test_invalid_l_value() {
         let result = Isomorphism::gen_g(1, 1, 0, 6, TEST_SEED);
         assert!(result.is_err());
-        // assert_eq!(result.err().unwrap(), SLECryptoError::InvalidLValue);
     }
 
     #[test]
     fn test_k0_error() {
         let result = Isomorphism::gen_g(1, 1, 1, 0, TEST_SEED);
         assert!(result.is_err());
-        // assert_eq!(result.err().unwrap(), SLECryptoError::KMustBePositive);
     }
 }

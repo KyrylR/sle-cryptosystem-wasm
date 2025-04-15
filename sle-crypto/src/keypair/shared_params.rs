@@ -3,12 +3,15 @@ use crate::gen_g::Isomorphism;
 use crate::keypair::helper::{map_matrix, map_vector};
 use crate::keypair::keys::PublicKey;
 use crate::preset::encoding_table::BASE64_CHAR_TO_INDEX_MAP;
-use crate::ring::matrix_ops::{matrix_vector_mul, vector_add};
 use crate::ring::Vector;
-use crate::sle::{solve, Solution};
-use base64::engine::general_purpose::STANDARD;
+use crate::ring::matrix_ops::{matrix_vector_mul, vector_add};
+use crate::sle::solve;
+
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
+
 use rand::random;
+
 use serde::{Deserialize, Serialize};
 use serde_json;
 
@@ -91,7 +94,7 @@ impl SharedParams {
             None => {
                 return Err(SLECryptoError::InternalError(
                     "gen_g_a not found in outer_structure.definite_string".to_string(),
-                ))
+                ));
             }
         };
 
@@ -130,36 +133,36 @@ impl SharedParams {
     }
 
     pub fn encrypt(&self, public_key: &PublicKey, data: String) -> Result<String, SLECryptoError> {
-        // 1. Prepare data for encryption
-        let encoded_data = STANDARD.encode(&data);
+        // 1. Pad the original data so its Base64 encoded length is a multiple of block_size
+        let block_size = self.equation_count;
+        let mut padded_data = data.into_bytes(); // Work with bytes for easier padding
+        // Use a padding character unlikely to be confused with Base64's '='
+        let padding_char = 0u8; // Null byte
+
+        while STANDARD.encode(&padded_data).len() % block_size != 0 {
+            padded_data.push(padding_char);
+        }
+
+        // 2. Prepare data for encryption: Base64 encode and map characters to indices
+        let encoded_data = STANDARD.encode(&padded_data);
         let mut prepared_data: Vec<u8> = vec![0; encoded_data.len()];
         for (index, char) in encoded_data.chars().enumerate() {
             prepared_data[index] = BASE64_CHAR_TO_INDEX_MAP[&char]
         }
 
-        // 2. Decompose prepared_data into blocks.
-        let block_size = self.equation_count;
-        let padding_value = BASE64_CHAR_TO_INDEX_MAP[&'='] as i64; // Use index for '=' padding
-
-        let mut blocks: Vec<Vector> = prepared_data
-            .chunks(block_size)
-            .map(|chunk| {
-                let mut block: Vector = chunk.iter().map(|&byte| byte as i64).collect();
-                // Pad if necessary
-                if block.len() < block_size {
-                    block.resize(block_size, padding_value);
-                }
-                block
-            })
+        // 3. Decompose prepared_data into blocks. Length is guaranteed to be multiple of block_size.
+        let blocks: Vec<Vector> = prepared_data
+            .chunks_exact(block_size)
+            .map(|chunk| chunk.iter().map(|&byte| byte as i64).collect())
             .collect();
 
-        // 3. Encrypt data using `encrypt_block` function
+        // 4. Encrypt data using `encrypt_block` function
         let mut encrypted_blocks: Vec<(Vector, Vector)> = Vec::with_capacity(blocks.len());
         for block in blocks.iter() {
             encrypted_blocks.push(self.encrypt_block(public_key, block)?);
         }
 
-        // 6. Combine blocks and using serde_json serialize them and return
+        // 5. Combine blocks and using serde_json serialize them and return
         serde_json::to_string(&encrypted_blocks).map_err(|e| {
             SLECryptoError::InternalError(format!("Failed to serialize encrypted blocks: {}", e))
         })
@@ -178,7 +181,8 @@ impl SharedParams {
         &self,
         public_key: &PublicKey,
         block: &Vector,
-    ) -> Result<(Vector, Vector), SLECryptoError> { // Ciphertext (d, d1) is in Gm (u32)
+    ) -> Result<(Vector, Vector), SLECryptoError> {
+        // Ciphertext (d, d1) is in Gm (u32)
         if block.len() != self.equation_count {
             return Err(SLECryptoError::DimensionMismatch(format!(
                 "Message block length ({}) must match parameter p ({})",
@@ -202,12 +206,12 @@ impl SharedParams {
         let ring = &self.inner_structure.ring;
 
         // 3. Solve Ax = v (mod m) in Zm for a particular solution x_bar_zm
-        let x_bar_zm = match solve(&matrix_a, block, ring.modulus)? {
-            Solution::Unique(sol) => sol,
-            Solution::Infinite(sol, _) => sol, // Pick the particular solution
-            Solution::NoSolution => {
+        let x_bar_zm = match solve(&matrix_a, block, ring) {
+            Some(sol) => sol,
+            None => {
                 return Err(SLECryptoError::InternalError(
-                    "System Ax=v has no solution for the given message block and matrix A".to_string(),
+                    "System Ax=v has no solution for the given message block and matrix A"
+                        .to_string(),
                 ));
             }
         };
@@ -227,13 +231,13 @@ impl SharedParams {
         }
 
         // 4. Calculate d = A * a_bar (mod m) in Zm
-        let d_zm = matrix_vector_mul(&matrix_a, &a_bar_zm, &ring)?;
+        let d_zm = matrix_vector_mul(&matrix_a, &a_bar_zm, ring)?;
 
         // 5. Calculate d1 = B * (x_bar_zm + a_bar_zm) + vector_ba
-        let x_plus_a_zm = vector_add(&x_bar_zm, &a_bar_zm, &ring)?;
+        let x_plus_a_zm = vector_add(&x_bar_zm, &a_bar_zm, ring)?;
 
-        let b_inner_sum_zm = matrix_vector_mul(&matrix_b, &x_plus_a_zm, &ring)?;
-        let d1_zm = vector_add(&b_inner_sum_zm, &vector_ba, &ring)?;
+        let b_inner_sum_zm = matrix_vector_mul(&matrix_b, &x_plus_a_zm, ring)?;
+        let d1_zm = vector_add(&b_inner_sum_zm, &vector_ba, ring)?;
 
         // 6. Map final ciphertext d and d1
         let map_zk_to_gm = |val| self.inner_structure.map_into(val);
