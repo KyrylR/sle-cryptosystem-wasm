@@ -204,10 +204,7 @@ impl SharedParams {
         let vector_a_bar_inner = map_vector(&vector_a_bar_inner_gm, &map_gm_to_zm);
 
         let ring = &self.inner_structure.ring;
-
-        let minor_cols: Vec<usize> = (0..self.equation_count).collect();
-        let A1inv = identity_matrix(self.equation_count);
-
+        
         // 3. Solve Ax = v (mod m) in Zm for a particular solution x_bar_zm
         let m = ring.modulus() as i64;
 
@@ -219,14 +216,14 @@ impl SharedParams {
         for i in 0..self.equation_count {
             let mut s: i64 = 0;
             for j in 0..self.equation_count {
-                s += A1inv[i][j] * b_zm[j];
+                s += public_key.good.A1inv[i][j] * b_zm[j];
             }
             u[i] = s.rem_euclid(m);
         }
 
         // scatter u into x at the minor positions:
         let mut x_bar_zm: Vector = vec![0; self.variables_count];
-        for (i, &c) in minor_cols.iter().enumerate() {
+        for (i, &c) in public_key.good.minor_cols.iter().enumerate() {
             x_bar_zm[c] = u[i];
         }
 

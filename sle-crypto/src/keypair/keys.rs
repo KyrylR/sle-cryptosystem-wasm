@@ -5,8 +5,8 @@ use crate::preset::encoding_table::INDEX_TO_BASE64_CHAR_MAP;
 use crate::ring::matrix_ops::{
     identity_matrix, matrix_inverse, matrix_mul, matrix_vector_mul, vector_add, vector_sub,
 };
-use crate::ring::{Matrix, Ring, Vector};
-use crate::sle::modinv;
+use crate::ring::{gcd, Matrix, Ring, Vector};
+use crate::sle::{modinv, solve_system};
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
@@ -24,6 +24,7 @@ pub struct PrivateKey {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PublicKey {
+    pub good: GoodMatrix,
     pub matrix_A_factored: Matrix,
     pub matrix_A_bar_factored: Matrix,
     pub vector_A_bar_inner_factored: Vector,
@@ -84,6 +85,7 @@ impl PrivateKey {
         let vector_a_bar_inner_factored = map_vector(&vector_A_bar_inner_gm, &map_gm_to_gm_ksi);
 
         Ok(PublicKey {
+            good: self.matrix_A.clone(),
             matrix_A_factored: matrix_a_factored,
             matrix_A_bar_factored: matrix_a_bar_factored,
             vector_A_bar_inner_factored: vector_a_bar_inner_factored,
@@ -154,97 +156,69 @@ impl PrivateKey {
 ///  - rank(A)=p (equivalently A * y≡0 has only the trivial solution)
 pub fn make_good_matrix(p: usize, q: usize, ring: &Ring) -> Result<GoodMatrix, SLECryptoError> {
     let m = ring.modulus() as i64;
+    let mut attempts = 0;
 
-    // 1) build A so that its first p cols = I_p, rest random
-    let mut A: Matrix = vec![vec![0i64; q]; p];
-    for i in 0..p {
-        A[i][i] = 1; // identity minor
-        for j in p..q {
-            let r = ring.normalize(rand::random::<i64>());
-            A[i][j] = r;
+    loop {
+        attempts += 1;
+        if attempts > 100_000 {
+            return Err(SLECryptoError::InternalError(
+                "Could not generate full‐row‐rank A with invertible minor".into(),
+            ));
         }
+
+        // 1) pick random p×q in Z/m
+        let mut A = vec![vec![0i64; q]; p];
+        for row in &mut A {
+            for x in row.iter_mut() {
+                *x = ring.normalize(rand::random::<i64>());
+            }
+        }
+
+        // 2) test row‐independence by checking null‐space of A^T
+        let AT: Matrix = (0..q).map(|j| (0..p).map(|i| A[i][j]).collect()).collect();
+        let null = solve_system(&AT, m);
+        let rows_indep = null.iter().all(|v| v.iter().all(|&x| x.rem_euclid(m) == 0));
+        if !rows_indep {
+            continue;
+        }
+
+        // 3) find one p‐subset of columns whose p×p minor is invertible mod m
+        let mut chosen: Vec<usize> = Vec::new();
+        for cols in combinations(q, p) {
+            // build the p×p submatrix on cols
+            let mut sub = vec![vec![0i64; p]; p];
+            for (r, &c) in cols.iter().enumerate() {
+                for rr in 0..p {
+                    sub[rr][r] = A[rr][c].rem_euclid(m);
+                }
+            }
+            let d = det_mod(&sub, m);
+            if gcd(d, m) == 1 {
+                chosen = cols;
+                break;
+            }
+        }
+        if chosen.len() != p {
+            continue;
+        }
+
+        // 4) build that submatrix A1 and invert it by Gauss–Jordan
+        let mut A1 = vec![vec![0i64; p]; p];
+        for i in 0..p {
+            for (j, &c) in chosen.iter().enumerate() {
+                A1[i][j] = A[i][c].rem_euclid(m);
+            }
+        }
+        gauss_jordan_inv(&mut A1, m);
+
+        // 5) we now have A, minor cols and A1inv
+        return Ok(GoodMatrix {
+            A,
+            minor_cols: chosen,
+            A1inv: A1,
+        });
     }
-
-    // 2) we know row‐rank = p and minor is I_p ⇒ inv = I_p,
-    //    so no more checks needed.
-
-    // 3) record minor_cols = [0,1,…,p-1]
-    let minor_cols: Vec<usize> = (0..p).collect();
-
-    // 4) A1inv = identity
-    let A1inv = identity_matrix(p);
-
-    Ok(GoodMatrix {
-        A,
-        minor_cols,
-        A1inv,
-    })
 }
-// pub fn make_good_matrix(p: usize, q: usize, ring: &Ring) -> Result<GoodMatrix, SLECryptoError> {
-//     let m = ring.modulus() as i64;
-//     let mut attempts = 0;
-//
-//     loop {
-//         attempts += 1;
-//         if attempts > 100_000 {
-//             return Err(SLECryptoError::InternalError(
-//                 "Could not generate full‐row‐rank A with invertible minor".into(),
-//             ));
-//         }
-//
-//         // 1) pick random p×q in Z/m
-//         let mut A = vec![vec![0i64; q]; p];
-//         for row in &mut A {
-//             for x in row.iter_mut() {
-//                 *x = ring.normalize(rand::random::<i64>());
-//             }
-//         }
-//
-//         // 2) test row‐independence by checking null‐space of A^T
-//         let AT: Matrix = (0..q).map(|j| (0..p).map(|i| A[i][j]).collect()).collect();
-//         let null = solve_system(&AT, m);
-//         let rows_indep = null.iter().all(|v| v.iter().all(|&x| x.rem_euclid(m) == 0));
-//         if !rows_indep {
-//             continue;
-//         }
-//
-//         // 3) find one p‐subset of columns whose p×p minor is invertible mod m
-//         let mut chosen: Vec<usize> = Vec::new();
-//         for cols in combinations(q, p) {
-//             // build the p×p submatrix on cols
-//             let mut sub = vec![vec![0i64; p]; p];
-//             for (r, &c) in cols.iter().enumerate() {
-//                 for rr in 0..p {
-//                     sub[rr][r] = A[rr][c].rem_euclid(m);
-//                 }
-//             }
-//             let d = det_mod(&sub, m);
-//             if gcd(d, m) == 1 {
-//                 chosen = cols;
-//                 break;
-//             }
-//         }
-//         if chosen.len() != p {
-//             continue;
-//         }
-//
-//         // 4) build that submatrix A1 and invert it by Gauss–Jordan
-//         let mut A1 = vec![vec![0i64; p]; p];
-//         for i in 0..p {
-//             for (j, &c) in chosen.iter().enumerate() {
-//                 A1[i][j] = A[i][c].rem_euclid(m);
-//             }
-//         }
-//         gauss_jordan_inv(&mut A1, m);
-//
-//         // 5) we now have A, minor cols and A1inv
-//         return Ok(GoodMatrix {
-//             A,
-//             minor_cols: chosen,
-//             A1inv: A1,
-//         });
-//     }
-// }
 
 /// Compute det(A) mod m for an n×n matrix A (in ℤ/m), returning a value in [0..m).
 /// If we ever fail to find an invertible pivot, we return 0 (so gcd(det,m)>1).
