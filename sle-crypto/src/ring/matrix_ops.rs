@@ -2,42 +2,77 @@ use crate::errors::SLECryptoError;
 use crate::ring::{Matrix, Ring, Vector};
 use crate::sle::solve;
 
-/// Computes the matrix-vector product `y = Ax` modulo `m`, where `m` is the modulus of the ring.
-///
-/// # Errors
-///
-/// Returns `SLECryptoError::DimensionMismatch` if the matrix columns do not match the vector length
-/// or if the matrix rows have inconsistent lengths.
+/// A·x where A is an m×n matrix and x is a length–n vector.
+/// Returns an m‐vector.
 pub fn matrix_vector_mul(a: &Matrix, x: &Vector, ring: &Ring) -> Result<Vector, SLECryptoError> {
-    let n = a.len();
-    if n == 0 {
+    let m = a.len();
+    if m == 0 {
         return Ok(Vec::new());
     }
-    let m_vars = a[0].len();
-    if x.len() != m_vars {
+    let n = a[0].len();
+    if x.len() != n {
         return Err(SLECryptoError::DimensionMismatch(format!(
             "Matrix columns ({}) must match vector length ({})",
-            m_vars,
+            n,
             x.len()
         )));
     }
 
-    let mut y = vec![0; n];
-    for i in 0..n {
-        if a[i].len() != m_vars {
+    let mut y = vec![0i64; m];
+    for i in 0..m {
+        if a[i].len() != n {
             return Err(SLECryptoError::DimensionMismatch(format!(
-                "Matrix row {} has length {} but expected {}",
+                "Row {} has length {} but expected {}",
                 i,
                 a[i].len(),
-                m_vars
+                n
             )));
         }
         let mut sum = 0i64;
-        for (&a_val, &x_val) in a[i].iter().zip(x.iter()) {
-            let term = ring.mul(a_val, x_val);
+        for j in 0..n {
+            let term = ring.mul(a[i][j], x[j]);
             sum = ring.add(sum, term);
         }
         y[i] = sum;
+    }
+    Ok(y)
+}
+
+/// x·A where x is a length–m row‐vector and A is m×n.  
+/// Returns a length–n row‐vector.
+pub fn vector_matrix_mul(x: &Vector, a: &Matrix, ring: &Ring) -> Result<Vector, SLECryptoError> {
+    let m = x.len();
+    if m == 0 {
+        return Ok(Vec::new());
+    }
+    if a.len() != m {
+        return Err(SLECryptoError::DimensionMismatch(format!(
+            "Vector length ({}) must match matrix rows ({})",
+            m,
+            a.len()
+        )));
+    }
+    let n = a[0].len();
+    // sanity‐check ragged rows
+    for (i, row) in a.iter().enumerate() {
+        if row.len() != n {
+            return Err(SLECryptoError::DimensionMismatch(format!(
+                "Row {} has length {} but expected {}",
+                i,
+                row.len(),
+                n
+            )));
+        }
+    }
+
+    let mut y = vec![0i64; n];
+    for j in 0..n {
+        let mut sum = 0i64;
+        for i in 0..m {
+            let term = ring.mul(x[i], a[i][j]);
+            sum = ring.add(sum, term);
+        }
+        y[j] = sum;
     }
     Ok(y)
 }

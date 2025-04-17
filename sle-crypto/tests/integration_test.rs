@@ -4,12 +4,12 @@ use sle_crypto::keypair::shared_params::SharedParams;
 
 #[test]
 fn happy_flow() -> Result<(), SLECryptoError> {
-    let shared_params = SharedParams::try_with(7, 5, 2, 65, 12345, 10, 10)?;
+    let shared_params = SharedParams::try_with(7, 5, 2, 65, 12345, 30, 30)?;
 
     let private_key = PrivateKey::try_with(shared_params)?;
     let public_key = private_key.get_public_key()?;
 
-    let original_data = "Heh123123".to_string();
+    let original_data = "Heh safasdkjfhkjas fha sdf asda".to_string();
 
     let cipher = private_key
         .shared_params

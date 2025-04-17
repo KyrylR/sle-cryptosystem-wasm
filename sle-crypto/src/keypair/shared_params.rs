@@ -4,8 +4,7 @@ use crate::keypair::helper::{map_matrix, map_vector};
 use crate::keypair::keys::PublicKey;
 use crate::preset::encoding_table::BASE64_CHAR_TO_INDEX_MAP;
 use crate::ring::Vector;
-use crate::ring::matrix_ops::{matrix_vector_mul, vector_add};
-use crate::sle::solve;
+use crate::ring::matrix_ops::{identity_matrix, matrix_vector_mul, vector_add};
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
@@ -194,27 +193,42 @@ impl SharedParams {
         // 1. Map from Gm/ksi to G_m
         let map_gm_ksi_to_gm = |val| self.map_pub_back(val);
         let matrix_a_gm = map_matrix(&public_key.matrix_A_factored, &map_gm_ksi_to_gm);
-        let matrix_b_gm = map_matrix(&public_key.matrix_B_factored, &map_gm_ksi_to_gm);
-        let vector_ba_gm = map_vector(&public_key.vector_Ba_factored, &map_gm_ksi_to_gm);
+        let matrix_a_bar_gm = map_matrix(&public_key.matrix_A_bar_factored, &map_gm_ksi_to_gm);
+        let vector_a_bar_inner_gm =
+            map_vector(&public_key.vector_A_bar_inner_factored, &map_gm_ksi_to_gm);
 
         // 2. Map from G_m to Zm
         let map_gm_to_zm = |val| self.inner_structure.map_back(val);
         let matrix_a = map_matrix(&matrix_a_gm, &map_gm_to_zm);
-        let matrix_b = map_matrix(&matrix_b_gm, &map_gm_to_zm);
-        let vector_ba = map_vector(&vector_ba_gm, &map_gm_to_zm);
+        let matrix_a_bar = map_matrix(&matrix_a_bar_gm, &map_gm_to_zm);
+        let vector_a_bar_inner = map_vector(&vector_a_bar_inner_gm, &map_gm_to_zm);
 
         let ring = &self.inner_structure.ring;
 
+        let minor_cols: Vec<usize> = (0..self.equation_count).collect();
+        let A1inv = identity_matrix(self.equation_count);
+
         // 3. Solve Ax = v (mod m) in Zm for a particular solution x_bar_zm
-        let x_bar_zm = match solve(&matrix_a, block, ring) {
-            Some(sol) => sol,
-            None => {
-                return Err(SLECryptoError::InternalError(
-                    "System Ax=v has no solution for the given message block and matrix A"
-                        .to_string(),
-                ));
+        let m = ring.modulus() as i64;
+
+        // build RHS = b  (length p)
+        let b_zm: Vec<i64> = block.iter().map(|&v| ring.normalize(v)).collect();
+
+        // compute u = A1inv * b  (p×p times p×1)
+        let mut u = vec![0i64; self.equation_count];
+        for i in 0..self.equation_count {
+            let mut s: i64 = 0;
+            for j in 0..self.equation_count {
+                s += A1inv[i][j] * b_zm[j];
             }
-        };
+            u[i] = s.rem_euclid(m);
+        }
+
+        // scatter u into x at the minor positions:
+        let mut x_bar_zm: Vector = vec![0; self.variables_count];
+        for (i, &c) in minor_cols.iter().enumerate() {
+            x_bar_zm[c] = u[i];
+        }
 
         if x_bar_zm.len() != self.variables_count {
             return Err(SLECryptoError::InternalError(format!(
@@ -230,14 +244,13 @@ impl SharedParams {
             *val = ring.normalize(random::<i64>());
         }
 
-        // 4. Calculate d = A * a_bar (mod m) in Zm
+        // 4) d = A·a_bar  ∈ (Z/m)^p
         let d_zm = matrix_vector_mul(&matrix_a, &a_bar_zm, ring)?;
 
-        // 5. Calculate d1 = B * (x_bar_zm + a_bar_zm) + vector_ba
-        let x_plus_a_zm = vector_add(&x_bar_zm, &a_bar_zm, ring)?;
-
-        let b_inner_sum_zm = matrix_vector_mul(&matrix_b, &x_plus_a_zm, ring)?;
-        let d1_zm = vector_add(&b_inner_sum_zm, &vector_ba, ring)?;
+        // 5) d1 = A_bar·(x_bar+a_bar) + a_inner
+        let xpa = vector_add(&x_bar_zm, &a_bar_zm, ring)?;
+        let mut d1_zm = matrix_vector_mul(&matrix_a_bar, &xpa, ring)?;
+        d1_zm = vector_add(&d1_zm, &vector_a_bar_inner, ring)?;
 
         // 6. Map final ciphertext d and d1
         let map_zk_to_gm = |val| self.inner_structure.map_into(val);
