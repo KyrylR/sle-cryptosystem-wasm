@@ -1,0 +1,330 @@
+@comment{This is a sample main.bib file for the diploma thesis.}
+@comment{Please review, add specific papers you cite, and remove unused entries.}
+
+@comment{ ==================== Algebra and Rings ==================== }
+
+@book{DummitFoote04,
+  author    = {David S. Dummit and Richard M. Foote},
+  title     = {Abstract Algebra},
+  publisher = {Wiley},
+  year      = {2004},
+  edition   = {3rd},
+  isbn      = {978-0-471-43334-7},
+  comment   = {Standard comprehensive text on abstract algebra, including ring theory.}
+}
+
+@book{McDonald74,
+  author    = {Bernard R. McDonald},
+  title     = {Finite Rings with Identity},
+  publisher = {Marcel Dekker},
+  year      = {1974},
+  series    = {Pure and Applied Mathematics},
+  volume    = {28},
+  isbn      = {978-0-8247-6161-5},
+  comment   = {Classic text specifically on finite rings.}
+}
+
+@book{BiniFlamini05,
+  author    = {Dario Bini and Flaminio Flamini},
+  title     = {Finite Commutative Rings and Their Applications},
+  publisher = {Springer},
+  year      = {2005},
+  series    = {The Kluwer International Series in Engineering and Computer Science},
+  volume    = {680},
+  doi       = {10.1007/1-4020-7875-4},
+  isbn      = {978-1-4020-7874-2},
+  comment   = {Focuses on commutative finite rings and applications, potentially relevant.}
+}
+
+@book{HoffmanKunze71,
+  author    = {Kenneth Hoffman and Ray Kunze},
+  title     = {Linear Algebra},
+  publisher = {Prentice Hall},
+  year      = {1971},
+  edition   = {2nd},
+  isbn      = {978-0135367971},
+  comment   = {Standard text for linear algebra concepts, useful background even if not directly over rings.}
+}
+
+@comment{ ==================== Cryptography Fundamentals ==================== }
+
+@book{KL21,
+  author    = {Jonathan Katz and Yehuda Lindell},
+  title     = {Introduction to Modern Cryptography},
+  publisher = {CRC Press},
+  year      = {2021},
+  edition   = {3rd},
+  isbn      = {978-0815354369},
+  comment   = {Widely used textbook covering fundamentals, symmetric and asymmetric crypto, security definitions (IND-CPA etc.).}
+}
+
+@book{StinsonPaterson18,
+  author    = {Douglas R. Stinson and Maura B. Paterson},
+  title     = {Cryptography: Theory and Practice},
+  publisher = {CRC Press},
+  year      = {2018},
+  edition   = {4th},
+  isbn      = {978-1138197015},
+  comment   = {Another comprehensive textbook on cryptography.}
+}
+
+@article{Shannon49,
+  author  = {Claude E. Shannon},
+  title   = {Communication Theory of Secrecy Systems},
+  journal = {Bell System Technical Journal},
+  year    = {1949},
+  volume  = {28},
+  number  = {4},
+  pages   = {656--715},
+  doi     = {10.1002/j.1538-7305.1949.tb00928.x},
+  comment = {Foundational paper for information-theoretic security, including perfect secrecy (OTP).}
+}
+
+@article{Kerckhoffs1883,
+  author  = {Auguste Kerckhoffs},
+  title   = {La cryptographie militaire},
+  journal = {Journal des sciences militaires},
+  year    = {1883},
+  volume  = {IX},
+  pages   = {5--38, 161--191},
+  comment = {Origin of Kerckhoffs's Principle. Cite a translation or secondary source if needed.}
+}
+
+@comment{ ==================== Ring-Based Cryptography ==================== }
+
+@article{Kryvyi2022,
+  author  = {Serhii Kryvyi and Iryna Puhach and Yuliia Kryva},
+  title   = {{Symmetric crypto system based on isomorphic rings transformations}},
+  journal = {Information Technology and Security},
+  year    = {2022},
+  volume  = {10},
+  number  = {1 (18)},
+  pages   = {40--51},
+  doi     = {10.20535/2411-1031.2022.10.1(18).261878},
+  comment = {The specific paper mentioned in the prompt (\cite{5}). Use this key if you referred to it as [5].}
+}
+
+@inproceedings{AggarwalJouxPrakashSakar21,
+  author    = {Gottfried Aggarwal and Antoine Joux and Anupam Prakash and Sanjit Kumar Sakar},
+  title     = {{A New Public-Key Cryptosystem based on Polynomial Systems over Z_n}},
+  booktitle = {Advances in Cryptology - ASIACRYPT 2021},
+  year      = {2021},
+  pages     = {65--95},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {13091},
+  doi       = {10.1007/978-3-030-92062-3_3},
+  comment   = {Example of recent work using rings Z_n, though public-key. Might offer related ideas or challenges.}
+}
+
+@comment{ Add other relevant papers on symmetric crypto over rings if found. }
+
+
+@comment{ ==================== Zero-Knowledge Proofs (ZKP) ==================== }
+
+@inproceedings{GMR85,
+  author    = {Shafi Goldwasser and Silvio Micali and Charles Rackoff},
+  title     = {The Knowledge Complexity of Interactive Proof Systems},
+  booktitle = {Proceedings of the 17th Annual ACM Symposium on Theory of Computing (STOC '85)},
+  year      = {1985},
+  pages     = {291--304},
+  doi       = {10.1145/22145.22178},
+  comment = {Foundational paper introducing interactive proofs and zero-knowledge.}
+  note      = {Journal version appeared in SIAM J. Comput., 18(1), 186–208, 1989.}
+}
+
+@inproceedings{GMW91,
+  author    = {Oded Goldreich and Silvio Micali and Avi Wigderson},
+  title     = {Proofs that Yield Nothing But Their Validity or All Languages in NP Have Zero-Knowledge Proof Systems},
+  booktitle = {Journal of the ACM},
+  year      = {1991},
+  volume    = {38},
+  number    = {1},
+  pages     = {691--729},
+  doi       = {10.1145/102827.102865},
+  comment = {Shows ZKP for all NP under cryptographic assumptions.}
+}
+
+@article{Goldreich02ZKPsurvey,
+  author  = {Oded Goldreich},
+  title   = {Zero-Knowledge Twenty Years After Its Invention},
+  journal = {Manuscript},
+  year    = {2002},
+  url     = {https://www.wisdom.weizmann.ac.il/~oded/zk-20.html},
+  comment = {A survey by a leading expert.}
+}
+
+@inproceedings{Groth16,
+  author    = {Jens Groth},
+  title     = {On the Size of Pairing-Based Non-interactive Arguments},
+  booktitle = {Advances in Cryptology - EUROCRYPT 2016},
+  year      = {2016},
+  pages     = {305--326},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {9666},
+  doi       = {10.1007/978-3-662-49896-5_11},
+  comment = {Highly influential succinct non-interactive ZKP (SNARK).}
+}
+
+@inproceedings{BBHR18,
+  author    = {Benedikt Bünz and Jonathan Bootle and Dan Boneh and Andrew Poelstra and Pieter Wuille and Greg Maxwell},
+  title     = {Bulletproofs: Short Proofs for Confidential Transactions and More},
+  booktitle = {2018 IEEE Symposium on Security and Privacy (SP)},
+  year      = {2018},
+  pages     = {315--334},
+  doi       = {10.1109/SP.2018.00020},
+  comment = {ZKP system without a trusted setup, good for range proofs.}
+}
+
+@misc{GabizonWilliamsonZhang19,
+  author       = {Ariel Gabizon and Zachary J. Williamson and Oana Ciobotaru},
+  title        = {{PLONK}: Permutations over Lagrange-bases for Oecumenical Noninteractive arguments of Knowledge},
+  howpublished = {Cryptology ePrint Archive, Report 2019/953},
+  year         = {2019},
+  url          = {https://eprint.iacr.org/2019/953},
+  comment      = {Popular universal SNARK system.}
+}
+
+@comment{ ==================== Interactive Proofs (IP) and PCP ==================== }
+
+@inproceedings{BabaiMoran88,
+  author    = {László Babai and Shlomo Moran},
+  title     = {Arthur-Merlin Games: A Randomized Proof System, and a Hierarchy of Complexity Classes},
+  booktitle = {Journal of Computer and System Sciences},
+  year      = {1988},
+  volume    = {36},
+  number    = {2},
+  pages     = {254--276},
+  doi       = {10.1016/0022-0000(88)90028-1},
+  comment = {Formalized interactive proofs (Arthur-Merlin games).}
+}
+
+@article{Shamir92IPPSPACE,
+  author  = {Adi Shamir},
+  title   = {IP = PSPACE},
+  journal = {Journal of the ACM},
+  year    = {1992},
+  volume  = {39},
+  number  = {4},
+  pages   = {869--877},
+  doi     = {10.1145/146585.146609},
+  comment = {Fundamental result showing the power of interactive proofs.}
+}
+
+@inproceedings{FGLSS91,
+  author    = {Uriel Feige and Shafi Goldwasser and L\'{a}szl\'{o} Lov\'{a}sz and Shmuel Safra and Mario Szegedy},
+  title     = {Interactive Proofs and the Hardness of Approximating Cliques},
+  booktitle = {Journal of the ACM},
+  year      = {1996},
+  volume    = {43},
+  number    = {2},
+  pages     = {268--292},
+  doi       = {10.1145/226643.226652},
+  comment = {Connection between IP and hardness of approximation, precursor to PCP theorem.}
+}
+
+@inproceedings{ALMSS98,
+  author    = {Sanjeev Arora and Carsten Lund and Rajeev Motwani and Madhu Sudan and Mario Szegedy},
+  title     = {Proof Verification and the Hardness of Approximation Problems},
+  booktitle = {Journal of the ACM},
+  year      = {1998},
+  volume    = {45},
+  number    = {3},
+  pages     = {501--555},
+  doi       = {10.1145/278298.278306},
+  comment = {One of the seminal papers proving the PCP Theorem.}
+}
+
+@inproceedings{AroraSafra98,
+  author    = {Sanjeev Arora and Shmuel Safra},
+  title     = {Probabilistic Checking of Proofs: A New Characterization of NP},
+  booktitle = {Journal of the ACM},
+  year      = {1998},
+  volume    = {45},
+  number    = {1},
+  pages     = {70--122},
+  doi       = {10.1145/273865.273901},
+  comment = {Another seminal paper proving the PCP Theorem.}
+}
+
+@article{GoldreichSudan06PCPSurvey,
+  author  = {Oded Goldreich and Madhu Sudan},
+  title   = {Probabilistically Checkable Proofs},
+  journal = {Bulletin of the EATCS},
+  year    = {2006},
+  volume  = {89},
+  pages   = {94--117},
+  comment = {Survey on PCP.}
+}
+
+
+@comment{ ==================== Verifiable Encryption ==================== }
+
+@inproceedings{Stadler96,
+    author = {Markus Stadler},
+    title = {Publicly Verifiable Secret Sharing},
+    booktitle = {Advances in Cryptology - EUROCRYPT '96},
+    year = {1996},
+    pages = {190--199},
+    series = {Lecture Notes in Computer Science},
+    volume = {1070},
+    doi = {10.1007/3-540-68339-9_17},
+    comment = {Early work related to verifying properties of secret data.}
+}
+
+@inproceedings{AsokanShoupWaidner98,
+    author = {N. Asokan and Michael K. Reiter and Victor Shoup and Markus Waidner},
+    title = {Verifiable Encryption},
+    booktitle = {Advances in Cryptology - EUROCRYPT '98},
+    year = {1998},
+    pages = {100--117},
+    series = {Lecture Notes in Computer Science},
+    volume = {1403},
+    doi = {10.1007/BFb0054118},
+    comment = {Often cited for verifiable encryption concepts, though focused on threshold settings.}
+}
+
+@inproceedings{CamenischLysyanskaya03,
+  author    = {Jan Camenisch and Anna Lysyanskaya},
+  title     = {A Signature Scheme with Efficient Protocols},
+  booktitle = {Security in Communication Networks, SCN 2002},
+  year      = {2003},
+  pages     = {268--289},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {2576},
+  doi       = {10.1007/3-540-36413-7_20},
+  comment   = {Introduces techniques often used in verifiable encryption/credential systems, allowing proofs about signed/encrypted data.}
+}
+
+@inproceedings{BelgraveEtAl14,
+    author = {Daniel Belgrave and John A. Douceur and Hao Chen and Jonathan D. Garside and Oran A. Mudanyali and Andrew Paverd and Andrew D. D. Smith and Mark D. Ryan},
+    title = {Verifiable Encryption: A Survey},
+    booktitle = {Proceedings of the 1st Workshop on Cryptography and Security in Computing Systems (CASCS '14)},
+    year = {2014},
+    pages = {1--6},
+    doi = {10.1145/2647888.2647890},
+    comment = {A survey specifically on verifiable encryption.}
+}
+
+@inproceedings{LibertYung10,
+    author = {Benoit Libert and Moti Yung},
+    title = {Verifiable Encryption and Applications},
+    booktitle = {Encyclopedia of Cryptography and Security},
+    year = {2011},
+    editor = {Henk C. A. van Tilborg and Sushil Jajodia},
+    publisher = {Springer US},
+    pages = {1384--1388},
+    doi = {10.1007/978-1-4419-5906-5_708},
+    comment = {Encyclopedia entry providing an overview.}
+}
+
+@comment{ ==================== Other Potentially Useful ==================== }
+
+@book{BonehShoup17,
+  author    = {Dan Boneh and Victor Shoup},
+  title     = {A Graduate Course in Applied Cryptography},
+  year      = {2020},
+  howpublished = {Version 0.5},
+  url       = {https://crypto.stanford.edu/~dabo/cryptobook/},
+  comment   = {Comprehensive, modern textbook draft covering many advanced topics.}
+}
+
