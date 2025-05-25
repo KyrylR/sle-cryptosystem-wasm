@@ -23,7 +23,6 @@ criterion = { version = "0.5", features = ["async_tokio"] }
 fake = "4.3.0"
 quickcheck = "1.0.3"
 quickcheck_macros = "1.0.0"
-rand = "0.8"
 aes-gcm = "0.10"
 chacha20poly1305 = { version = "0.10", features = ["heapless"] }
 
