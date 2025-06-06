@@ -28,11 +28,11 @@ jobs:
           restore-keys: |
             nix-${{ runner.os }}-
 
-#      - name: Build Linux App
-#        run: nix build .#default --out-link result-linux
-#
-#      - name: Build Windows App
-#        run: nix build .#sle-app-windows --out-link result-windows
+      - name: Build Linux App
+        run: nix build .#default --out-link result-linux
+
+      - name: Build Windows App
+        run: nix build .#sle-app-windows --out-link result-windows
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
