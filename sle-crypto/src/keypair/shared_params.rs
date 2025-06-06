@@ -176,7 +176,7 @@ impl SharedParams {
     ///
     /// # Returns
     /// The ciphertext block `(d, d1)` (vectors with elements in Gm) or a `CryptoError`.
-    fn encrypt_block(
+    pub fn encrypt_block(
         &self,
         public_key: &PublicKey,
         block: &Vector,

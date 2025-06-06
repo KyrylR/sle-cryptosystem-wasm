@@ -1,4 +1,4 @@
 [workspace]
-members = ["sle-crypto"]
+members = [ "gui","sle-crypto"]
 
 resolver = "3"

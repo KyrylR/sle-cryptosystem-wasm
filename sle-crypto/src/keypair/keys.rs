@@ -13,7 +13,7 @@ use base64::engine::general_purpose::STANDARD;
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrivateKey {
     pub shared_params: SharedParams,
     pub matrix_A: GoodMatrix,
@@ -22,7 +22,7 @@ pub struct PrivateKey {
     pub vector_A_bar_inner: Vector,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PublicKey {
     pub good: GoodMatrix,
     pub matrix_A_factored: Matrix,
