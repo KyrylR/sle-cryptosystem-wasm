@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 rand = "0.9.0"
 thiserror = "2.0.12"
+tracing = "0.1"
 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -25,6 +26,7 @@ quickcheck = "1.0.3"
 quickcheck_macros = "1.0.0"
 aes-gcm = "0.10"
 chacha20poly1305 = { version = "0.10", features = ["heapless"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [[bench]]
 name = "happy_flow"
@@ -34,4 +36,9 @@ harness = false
 [[bench]]
 name = "benchmark"
 path = "tests/benchmark.rs"
+harness = false
+
+[[bench]]
+name = "sizes"
+path = "benches/sizes.rs"
 harness = false

@@ -12,6 +12,7 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 
 use serde::{Deserialize, Serialize};
+use tracing::{debug, trace};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrivateKey {
@@ -69,6 +70,11 @@ impl PrivateKey {
     }
 
     pub fn get_public_key(&self) -> Result<PublicKey, SLECryptoError> {
+        trace!(
+            p = self.shared_params.equation_count,
+            q = self.shared_params.variables_count,
+            "get_public_key(start)"
+        );
         let shared_params = &self.shared_params;
         let inner_structure = &shared_params.inner_structure;
 
@@ -84,15 +90,18 @@ impl PrivateKey {
         let matrix_a_bar_factored = map_matrix(&matrix_a_bar_gm, &map_gm_to_gm_ksi);
         let vector_a_bar_inner_factored = map_vector(&vector_A_bar_inner_gm, &map_gm_to_gm_ksi);
 
-        Ok(PublicKey {
+        let pk = PublicKey {
             good: self.matrix_A.clone(),
             matrix_A_factored: matrix_a_factored,
             matrix_A_bar_factored: matrix_a_bar_factored,
             vector_A_bar_inner_factored: vector_a_bar_inner_factored,
-        })
+        };
+        debug!("get_public_key(done)");
+        Ok(pk)
     }
 
     pub fn decrypt(&self, ciphertext: String) -> Result<String, SLECryptoError> {
+        trace!(cipher_len = ciphertext.len(), "decrypt(start)");
         let encrypted_blocks: Vec<(Vector, Vector)> = serde_json::from_str(&ciphertext)?;
 
         // Decrypt each block
@@ -117,15 +126,18 @@ impl PrivateKey {
             .map_err(|e| SLECryptoError::InternalError(format!("Base64 decoding failed: {}", e)))?;
 
         // Convert bytes to UTF-8 string
-        String::from_utf8(decoded_bytes).map_err(|e| {
+        let out = String::from_utf8(decoded_bytes).map_err(|e| {
             SLECryptoError::InternalError(format!(
                 "Failed to convert decoded bytes to UTF-8: {}",
                 e
             ))
-        })
+        })?;
+        trace!(plaintext_len = out.len(), "decrypt(done)");
+        Ok(out)
     }
 
     pub fn decrypt_block(&self, block: (Vector, Vector)) -> Result<Vector, SLECryptoError> {
+        trace!(d_len = block.0.len(), d1_len = block.1.len(), "decrypt_block(start)");
         let map_gm_ksi_to_gm = |val| self.shared_params.map_pub_back(val);
         let map_gm_to_zm = |val| self.shared_params.inner_structure.map_back(val);
 
@@ -141,12 +153,15 @@ impl PrivateKey {
 
         // 3) remove the a_inner shift:  d1' = d1 − a_inner
         let d1prime = vector_sub(&d1, &self.vector_A_bar_inner, ring)?;
+        trace!("Formula: d1' = d1 − a_inner (mod m)");
 
         // 4) apply B_eff⁻¹:  tmp = B_eff⁻¹ · d1'
         let tmp = matrix_vector_mul(&self.matrix_B_inv, &d1prime, ring)?;
+        trace!("Formula: tmp = B_eff^(-1) · d1' (mod m)");
 
         // 5) subtract d to get A·x_bar = v
         let v_zm = vector_sub(&tmp, &d, ring)?;
+        trace!(p = v_zm.len(), "Formula: v = tmp − d (mod m); decrypt_block(done)");
 
         Ok(v_zm)
     }

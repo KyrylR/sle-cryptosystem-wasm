@@ -4,7 +4,7 @@ use crate::keypair::helper::{map_matrix, map_vector};
 use crate::keypair::keys::PublicKey;
 use crate::preset::encoding_table::BASE64_CHAR_TO_INDEX_MAP;
 use crate::ring::Vector;
-use crate::ring::matrix_ops::{identity_matrix, matrix_vector_mul, vector_add};
+use crate::ring::matrix_ops::{matrix_vector_mul, vector_add};
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
@@ -13,6 +13,7 @@ use rand::random;
 
 use serde::{Deserialize, Serialize};
 use serde_json;
+use tracing::{debug, trace};
 
 /// Parameters shared for cryptographic operations
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,6 +45,16 @@ impl SharedParams {
         equation_count: usize,
         variables_count: usize,
     ) -> Result<Self, SLECryptoError> {
+        trace!(
+            gen_g_a,
+            gen_g_c,
+            gen_g_l,
+            gen_g_k,
+            gen_g_seed,
+            equation_count,
+            variables_count,
+            "SharedParams::try_with(start)"
+        );
         if gen_g_k == 0 || gen_g_a == 0 || gen_g_c == 0 || gen_g_l == 0 {
             return Err(SLECryptoError::InvalidParameters(
                 "Gen G params must be > 0".to_string(),
@@ -111,14 +122,17 @@ impl SharedParams {
             reverse_ksi_1[value as usize] = i as i64;
         }
 
-        Ok(Self {
+        let params = Self {
             equation_count,
             variables_count,
             inner_structure: isomorphism_zk,
             outer_structure: isomorphism_zm,
             ksi_1,
             reverse_ksi_1,
-        })
+        };
+
+        debug!(p = params.equation_count, q = params.variables_count, m = modulus_m, k = modulus_k, "SharedParams::try_with(done)");
+        Ok(params)
     }
 
     pub fn map_into_pub(&self, value: i64) -> i64 {
@@ -132,6 +146,12 @@ impl SharedParams {
     }
 
     pub fn encrypt(&self, public_key: &PublicKey, data: String) -> Result<String, SLECryptoError> {
+        trace!(
+            p = self.equation_count,
+            q = self.variables_count,
+            data_len = data.len(),
+            "encrypt(start): pad so |Base64(data)| % p == 0"
+        );
         // 1. Pad the original data so its Base64 encoded length is a multiple of block_size
         let block_size = self.equation_count;
         let mut padded_data = data.into_bytes(); // Work with bytes for easier padding
@@ -144,6 +164,7 @@ impl SharedParams {
 
         // 2. Prepare data for encryption: Base64 encode and map characters to indices
         let encoded_data = STANDARD.encode(&padded_data);
+        trace!(encoded_len = encoded_data.len(), "Base64(encoded) length");
         let mut prepared_data: Vec<u8> = vec![0; encoded_data.len()];
         for (index, char) in encoded_data.chars().enumerate() {
             prepared_data[index] = BASE64_CHAR_TO_INDEX_MAP[&char]
@@ -154,6 +175,12 @@ impl SharedParams {
             .chunks_exact(block_size)
             .map(|chunk| chunk.iter().map(|&byte| byte as i64).collect())
             .collect();
+        debug!(
+            block_size,
+            blocks = blocks.len(),
+            "encrypt: prepared {} blocks of size p",
+            blocks.len()
+        );
 
         // 4. Encrypt data using `encrypt_block` function
         let mut encrypted_blocks: Vec<(Vector, Vector)> = Vec::with_capacity(blocks.len());
@@ -162,9 +189,11 @@ impl SharedParams {
         }
 
         // 5. Combine blocks and using serde_json serialize them and return
-        serde_json::to_string(&encrypted_blocks).map_err(|e| {
+        let serialized = serde_json::to_string(&encrypted_blocks).map_err(|e| {
             SLECryptoError::InternalError(format!("Failed to serialize encrypted blocks: {}", e))
-        })
+        })?;
+        trace!(cipher_len = serialized.len(), "encrypt(done)");
+        Ok(serialized)
     }
 
     /// Encrypts a message block `v` (elements in Zm) using the public key.
@@ -190,6 +219,7 @@ impl SharedParams {
             )));
         }
 
+        trace!(p = self.equation_count, q = self.variables_count, "encrypt_block(start)");
         // 1. Map from Gm/ksi to G_m
         let map_gm_ksi_to_gm = |val| self.map_pub_back(val);
         let matrix_a_gm = map_matrix(&public_key.matrix_A_factored, &map_gm_ksi_to_gm);
@@ -210,6 +240,7 @@ impl SharedParams {
 
         // build RHS = b  (length p)
         let b_zm: Vec<i64> = block.iter().map(|&v| ring.normalize(v)).collect();
+        trace!(p = self.equation_count, m, b_len = b_zm.len(), "Formula: u = A1inv · b (mod m)");
 
         // compute u = A1inv * b  (p×p times p×1)
         let mut u = vec![0i64; self.equation_count];
@@ -220,12 +251,14 @@ impl SharedParams {
             }
             u[i] = s.rem_euclid(m);
         }
+        trace!(u = ?u, "Result of u = A1inv·b (mod m)");
 
         // scatter u into x at the minor positions:
         let mut x_bar_zm: Vector = vec![0; self.variables_count];
         for (i, &c) in public_key.good.minor_cols.iter().enumerate() {
             x_bar_zm[c] = u[i];
         }
+        trace!(minor_cols = ?public_key.good.minor_cols, x_bar_len = x_bar_zm.len(), "Scatter u into x_bar at minor columns");
 
         if x_bar_zm.len() != self.variables_count {
             return Err(SLECryptoError::InternalError(format!(
@@ -240,14 +273,17 @@ impl SharedParams {
         for val in a_bar_zm.iter_mut() {
             *val = ring.normalize(random::<i64>());
         }
+        trace!(a_bar_len = a_bar_zm.len(), "Generated random a_bar ∈ (Z/m)^q");
 
         // 4) d = A·a_bar  ∈ (Z/m)^p
         let d_zm = matrix_vector_mul(&matrix_a, &a_bar_zm, ring)?;
+        trace!("Formula: d = A · a_bar (mod m)");
 
         // 5) d1 = A_bar·(x_bar+a_bar) + a_inner
         let xpa = vector_add(&x_bar_zm, &a_bar_zm, ring)?;
         let mut d1_zm = matrix_vector_mul(&matrix_a_bar, &xpa, ring)?;
         d1_zm = vector_add(&d1_zm, &vector_a_bar_inner, ring)?;
+        trace!("Formula: d1 = Ā · (x̄ + ā) + a_inner (mod m)");
 
         // 6. Map final ciphertext d and d1
         let map_zk_to_gm = |val| self.inner_structure.map_into(val);
@@ -259,6 +295,7 @@ impl SharedParams {
         let d1_gm = map_vector(&d1_zm, &map_zk_to_gm);
         let d1 = map_vector(&d1_gm, &map_gm_to_gm_ksi);
 
+        trace!(d_len = d.len(), d1_len = d1.len(), "encrypt_block(done)");
         Ok((d, d1))
     }
 }
