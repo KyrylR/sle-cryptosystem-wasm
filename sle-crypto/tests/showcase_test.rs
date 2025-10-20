@@ -38,9 +38,13 @@ fn showcase_cipher_decipher_ukrainian_text() -> Result<(), SLECryptoError> {
         .shared_params
         .encrypt(&public_key, original.clone())?;
 
+    dbg!(&cipher);
+
     let decoded = private_key.decrypt(cipher)?;
 
+    dbg!(&original, decoded.trim_end_matches('\0'));
     assert_eq!(original, decoded.trim_end_matches('\0'));
+
     Ok(())
 }
 

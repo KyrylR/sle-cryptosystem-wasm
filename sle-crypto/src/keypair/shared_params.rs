@@ -164,6 +164,7 @@ impl SharedParams {
 
         // 2. Prepare data for encryption: Base64 encode and map characters to indices
         let encoded_data = STANDARD.encode(&padded_data);
+        dbg!(&encoded_data);
         trace!(encoded_len = encoded_data.len(), "Base64(encoded) length");
         let mut prepared_data: Vec<u8> = vec![0; encoded_data.len()];
         for (index, char) in encoded_data.chars().enumerate() {
